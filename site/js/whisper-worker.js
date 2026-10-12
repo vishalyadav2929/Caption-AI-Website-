@@ -28,15 +28,22 @@ async function load(quality) {
       post({ type: 'download', loaded, total });
     }
   };
-  const devices = !forceCpu && typeof navigator !== 'undefined' && 'gpu' in navigator ? ['webgpu', 'wasm'] : ['wasm'];
+  // Phones: compressed 8-bit model on the CPU (≈ a quarter of the download, much less memory).
+  // Computers with WebGPU: full-precision encoder + 4-bit decoder (smaller than full fp32), then fp32.
+  const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+  const plans = [];
+  if (!forceCpu && !mobile && 'gpu' in navigator) {
+    plans.push({ device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' } });
+    plans.push({ device: 'webgpu', dtype: 'fp32' });
+  }
+  plans.push({ device: 'wasm', dtype: 'q8' });
   let lastErr;
   for (const name of MODELS[quality] || MODELS.balanced) {
-    for (const device of devices) {
+    for (const plan of plans) {
       try {
-        post({ type: 'status', text: `Loading speech model (${device === 'webgpu' ? 'GPU' : 'CPU'})…` });
-        asr = await pipeline('automatic-speech-recognition', name, {
-          device, dtype: device === 'webgpu' ? 'fp32' : 'q8', progress_callback,
-        });
+        post({ type: 'status', text: `Loading speech model (${plan.device === 'webgpu' ? 'GPU' : 'CPU'})…` });
+        asr = await pipeline('automatic-speech-recognition', name, { ...plan, progress_callback });
+        const device = plan.device;
         loadedKey = quality; loadedDevice = device; wordLevelBroken = false;
         post({ type: 'model', name, device });
         return asr;
