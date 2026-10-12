@@ -64,7 +64,12 @@ await step('upload shows preview and real metadata', async () => {
   assert.match(meta, /portrait\.webm · 540×960 · 0:06/);
 });
 
-await step('language pickers: Hindi offers Hindi / Hinglish / English', async () => {
+await step('upload without saved languages asks for them', async () => {
+  assert.match(await page.textContent('#startMsg'), /Choose the spoken language/);
+  assert.equal(await page.isVisible('#editor'), false);
+});
+
+await step('choosing languages starts captions automatically and opens the editor', async () => {
   await page.click('#spokenCombo .combo-btn');
   await page.fill('#spokenCombo input', 'hindi');
   await page.keyboard.press('Enter');
@@ -72,25 +77,38 @@ await step('language pickers: Hindi offers Hindi / Hinglish / English', async ()
   const opts = await page.$$eval('#captionCombo [role=option]', els => els.map(e => e.textContent));
   assert.deepEqual(opts, ['Hindi', 'Hinglish (Roman Hindi)', 'English']);
   await page.click('#captionCombo [role=option]:has-text("Hinglish")');
-  assert.equal(await page.textContent('#startGoText'), 'Generate Captions');
-});
-
-await step('generate fails honestly when the model can’t be downloaded (offline sandbox)', async () => {
-  await page.click('#startGo');
-  await page.waitForFunction(() => document.getElementById('startMsg').textContent.length > 0, null, { timeout: 60000 });
-  const msg = await page.textContent('#startMsg');
-  assert.match(msg, /Couldn’t generate captions/);
-  console.log('   message shown:', msg);
-  assert.equal(await vcz(() => window.__vcz.S.segments.length), 0, 'no fake captions');
-  // A second attempt must fail again with a message, not hang.
-  await page.evaluate(() => { document.getElementById('startMsg').textContent = ''; });
-  await page.click('#startGo');
-  await page.waitForFunction(() => document.getElementById('startMsg').textContent.length > 0, null, { timeout: 60000 });
-});
-
-await step('editor opens with an empty-state message', async () => {
-  await page.click('#startSkip');
   await page.waitForSelector('#editor:not([hidden])');
+  // Offline sandbox: the model can't download, so it must fail with a clear message and no fake captions.
+  await page.waitForFunction(() => /Couldn’t generate captions/.test(document.getElementById('status').textContent), null, { timeout: 60000 });
+  console.log('   message shown:', await page.textContent('#status'));
+  assert.equal(await vcz(() => window.__vcz.S.segments.length), 0, 'no fake captions');
+  assert.equal(await vcz(() => window.__vczAudioLength), 6 * 16000, 'decoded 6 s of 16 kHz audio');
+  const saved = await page.evaluate(() => localStorage.getItem('vcz-langs'));
+  assert.match(saved, /hinglish/);
+});
+
+await step('sample caption shows the template on the video before captions exist', async () => {
+  await page.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await page.waitForTimeout(300);
+  const a = await page.locator('#stage').screenshot();
+  await page.locator('#grid .tpl', { hasText: 'Pop-up Chat' }).first().click();
+  await page.waitForTimeout(300);
+  const b = await page.locator('#stage').screenshot();
+  assert.notDeepEqual(a, b);
+  await writeFile(join(OUT, 'sample-caption.png'), b);
+});
+
+await step('real-time audio fallback (used when a browser can’t decode the file) reads the full track', async () => {
+  await page.evaluate(() => { window.__vczForceRealtime = true; window.__vczAudioLength = 0; });
+  await page.evaluate(() => { document.getElementById('genBox').open = true; });
+  await page.click('#genBtn');
+  await page.waitForFunction(() => /Couldn’t generate captions/.test(document.getElementById('status').textContent) && window.__vczAudioLength > 0, null, { timeout: 60000 });
+  const len = await vcz(() => window.__vczAudioLength);
+  assert.ok(Math.abs(len / 16000 - 6) < 0.6, `captured ${len / 16000}s`);
+  await page.evaluate(() => { window.__vczForceRealtime = false; });
+});
+
+await step('editor shows an empty-state message', async () => {
   assert.match(await page.textContent('#segs'), /No captions yet/);
 });
 
@@ -175,36 +193,62 @@ await step('style controls change the template used for preview and export', asy
   await page.click('#tabCaptions');
 });
 
-let exported;
-await step('export produces a downloadable video with burned-in captions and audio', async () => {
+async function doExport(kind, res = 0) {
+  const dl = page.waitForEvent('download', { timeout: 90000 });
+  await page.click('#exportBtn');
+  await page.waitForSelector('#xDlg[open]');
+  await page.check(`input[name=xKind][value=${kind}]`);
+  await page.selectOption('#xRes', String(res));
+  await page.click('#xGo');
+  const d = await dl;
+  const file = join(OUT, d.suggestedFilename());
+  await d.saveAs(file);
+  await page.waitForSelector('#exportOv', { state: 'hidden' });
+  const streams = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height:stream_tags=alpha_mode', '-of', 'csv=p=0', file]).toString();
+  const dec = execFileSync('sh', ['-c', `ffmpeg -i "${file}" -f null - 2>&1 | grep -o 'time=[0-9:.]*' | tail -1`]).toString();
+  const [, h, m, sec] = dec.match(/time=(\d+):(\d+):([\d.]+)/);
+  return { file, streams, dur: +h * 3600 + +m * 60 + +sec };
+}
+
+await step('export: video with burned-in captions at original resolution with original audio', async () => {
   await page.locator('#grid .tpl', { hasText: 'High Contrast' }).first().click();
   await page.waitForTimeout(200);
-  const dl = page.waitForEvent('download', { timeout: 60000 });
-  await page.click('#exportBtn');
-  await page.waitForSelector('#exportOv:not([hidden])');
-  const d = await dl;
-  exported = join(OUT, d.suggestedFilename());
-  await d.saveAs(exported);
-  await page.waitForSelector('#exportOv', { state: 'hidden' });
-  const streams = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height', '-of', 'csv=p=0', exported]).toString();
+  const { file, streams, dur } = await doExport('video', 0);
   assert.match(streams, /video/); assert.match(streams, /audio/);
-  assert.match(streams, /540,960/);
-  if (exported.endsWith('.mp4')) assert.match(streams, /h264/, 'MP4 must contain H.264 video');
-  const fmtDur = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', exported]).toString().trim();
-  assert.ok(+fmtDur > 5, `container duration header: ${fmtDur}`);
-  const dec = execFileSync('sh', ['-c', `ffmpeg -i "${exported}" -f null - 2>&1 | grep -o 'time=[0-9:.]*' | tail -1`]).toString();
-  const [, h, m, s] = dec.match(/time=(\d+):(\d+):([\d.]+)/);
-  const dur = +h * 3600 + +m * 60 + +s;
+  assert.match(streams, /540,960/, 'original resolution kept');
+  if (file.endsWith('.mp4')) assert.match(streams, /h264/, 'MP4 must contain H.264 video');
   assert.ok(dur > 5 && dur < 7.5, `duration ${dur}`);
-  // Audio must be the original track, not silence.
-  const vol = execFileSync('sh', ['-c', `ffmpeg -i "${exported}" -vn -af volumedetect -f null - 2>&1 | grep -o 'mean_volume: [-0-9.]*'`]).toString();
-  const mean = +vol.split(':')[1];
-  assert.ok(mean > -35, `exported audio too quiet: ${mean} dB`);
-  // Frame at 1 s should contain the yellow caption text of the High Contrast style.
-  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', '1.2', '-i', exported, '-frames:v', '1', join(OUT, 'export-frame.png')]);
+  const fmtDur = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).toString().trim();
+  assert.ok(+fmtDur > 5, `container duration header: ${fmtDur}`);
+  const vol = execFileSync('sh', ['-c', `ffmpeg -i "${file}" -vn -af volumedetect -f null - 2>&1 | grep -o 'mean_volume: [-0-9.]*'`]).toString();
+  assert.ok(+vol.split(':')[1] > -35, `exported audio too quiet: ${vol}`);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', '1.2', '-i', file, '-frames:v', '1', join(OUT, 'export-frame.png')]);
   const yellow = execFileSync('sh', ['-c', `ffmpeg -v error -i "${join(OUT, 'export-frame.png')}" -vf "crop=iw:ih*0.25:0:ih*0.68,format=rgb24" -f rawvideo - | od -An -tu1 -v -w3 | awk '$1>200 && $2>200 && $3<90' | wc -l`]).toString();
   assert.ok(+yellow > 200, `caption pixels in exported frame: ${yellow.trim()}`);
-  console.log('   exported', d.suggestedFilename(), '| streams', streams.trim().replace(/\n/g, ' / '), '| decoded', dur.toFixed(2), 's | header', fmtDur, 's | caption px', yellow.trim());
+  console.log('   video:', file.split('/').pop(), '|', streams.trim().replace(/\n/g, ' / '), '|', dur.toFixed(2), 's | header', fmtDur, '| audio', vol.trim(), '| caption px', yellow.trim());
+});
+
+await step('export: captions only with a transparent background', async () => {
+  const { file, streams, dur } = await doExport('alpha', 0);
+  assert.match(streams, /540,960/);
+  assert.match(streams, /,1\s*$/m, 'alpha_mode=1');
+  assert.doesNotMatch(streams, /audio/);
+  assert.ok(dur > 5 && dur < 7.5, `duration ${dur}`);
+  const codec = /vp8/.test(streams) ? 'libvpx' : 'libvpx-vp9';
+  const stats = execFileSync('sh', ['-c', `ffmpeg -v error -c:v ${codec} -ss 1.2 -i "${file}" -frames:v 1 -vf "alphaextract,format=gray" -f rawvideo - | od -An -tu1 -v -w1 | awk '$1<10{t++} $1>245{o++} END{print t, o}'`]).toString().trim().split(' ').map(Number);
+  const [transparent, opaque] = stats;
+  assert.ok(transparent > 540 * 960 * 0.6, `transparent px ${transparent}`);
+  assert.ok(opaque > 1000, `opaque caption px ${opaque}`);
+  console.log('   transparent:', file.split('/').pop(), '| transparent px', transparent, '| opaque px', opaque);
+});
+
+await step('export: captions only on green screen', async () => {
+  const { file, streams } = await doExport('green', 0);
+  assert.match(streams, /540,960/);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', '1.2', '-i', file, '-frames:v', '1', join(OUT, 'green-frame.png')]);
+  const green = execFileSync('sh', ['-c', `ffmpeg -v error -i "${join(OUT, 'green-frame.png')}" -vf format=rgb24 -f rawvideo - | od -An -tu1 -v -w3 | awk '$1<60 && $2>200 && $3<60' | wc -l`]).toString();
+  assert.ok(+green > 540 * 960 * 0.6, `green px ${green.trim()}`);
+  console.log('   green screen:', file.split('/').pop(), '| green px', green.trim());
 });
 
 await step('landscape video sizes the canvas to 16:9', async () => {
