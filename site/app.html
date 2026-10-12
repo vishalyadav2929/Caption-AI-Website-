@@ -58,7 +58,7 @@
       <button class="start-go" id="startGo" disabled><i id="startBar"></i><span id="startGoText">Upload Video First</span></button>
       <button class="start-cancel" id="startCancel" type="button" hidden>Cancel</button>
       <p class="start-msg" id="startMsg" role="status" aria-live="polite"></p>
-      <p class="start-note">The first run downloads the speech model from Hugging Face (one time, then cached). Your video itself is never uploaded. <a href="privacy.html">Privacy</a></p>
+      <p class="start-note">Pick the languages once; next time captions start the moment you upload. The first run downloads the speech model from Hugging Face (one time, then cached). Your video itself is never uploaded. <a href="privacy.html">Privacy</a></p>
     </div>
     <p class="start-alt"><a href="#live" id="startLive">Or caption live with your camera →</a> · <a href="#" id="startSkip">Skip to editor</a></p>
   </section>
@@ -123,6 +123,11 @@
       </div>
       <div class="panel-b" id="paneCaptions" role="tabpanel">
         <div class="status" id="status" role="status" aria-live="polite"></div>
+        <div class="gen-prog" id="genProg" hidden>
+          <div class="gen-prog-top"><strong id="genProgText">Preparing…</strong><button class="btn btn-sm" id="genProgCancel">Cancel</button></div>
+          <div class="bar"><i id="genProgBar"></i></div>
+          <button class="btn btn-primary btn-sm" id="genProgTap" hidden>Tap to read the audio</button>
+        </div>
 
         <details class="gen" id="genBox">
           <summary>Generate captions from audio</summary>
@@ -210,6 +215,26 @@
       </div>
     </aside>
   </main>
+  <dialog class="xdlg" id="xDlg" aria-labelledby="xTitle">
+    <form method="dialog">
+      <h2 id="xTitle">Export</h2>
+      <fieldset>
+        <legend>What to download</legend>
+        <label class="xopt"><input type="radio" name="xKind" value="video" id="xKindVideo" checked>
+          <span><strong>Video with captions</strong><small>Your video with the captions burned in, original sound kept.</small></span></label>
+        <label class="xopt"><input type="radio" name="xKind" value="alpha" id="xKindAlpha">
+          <span><strong>Captions only · transparent</strong><small id="xAlphaNote"></small></span></label>
+        <label class="xopt"><input type="radio" name="xKind" value="green" id="xKindGreen">
+          <span><strong>Captions only · green screen</strong><small>For CapCut, InShot or VN: add as an overlay and use Chroma Key. Works on every phone.</small></span></label>
+      </fieldset>
+      <label class="field" for="xRes"><span class="xlabel">Resolution</span><select id="xRes"></select></label>
+      <p class="hint" id="xNote"></p>
+      <div class="row xbtns">
+        <button class="btn" id="xClose" value="cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="xGo" type="submit">Export</button>
+      </div>
+    </form>
+  </dialog>
   <div class="toast" id="toast"></div>
 
   <script type="module" src="js/app.js"></script>

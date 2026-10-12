@@ -321,7 +321,7 @@ function syncActions() {
   const has = S.segments.length > 0;
   $('srtBtn').disabled = !has || S.exporting;
   $('exportBtn').disabled = S.exporting || !(S.file && S.mode === 'file');
-  $('genBtn').disabled = !S.file || S.exporting || !!busyGen;
+  $('genBtn').disabled = !S.file || S.exporting || genRunning;
 }
 
 // ---------- file input ----------
@@ -354,6 +354,7 @@ async function loadFile(file) {
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.fileURL = url;
   S.file = file;
+  S.decodeFailed = false;
   S.segments = []; S.selected = -1;
   hist = []; hIdx = -1; commit();
   fitCanvas(video.videoWidth || 1080, video.videoHeight || 1920);
@@ -397,19 +398,86 @@ $('fsBtn').onclick = () => {
 
 // ---------- speech-to-text ----------
 let worker = null, busyGen = null;
-async function decodeAudio(file) {
+// ---- audio extraction ----
+// 1) Decode the whole file at the browser's native rate (works for MP4/WebM/M4A in Chrome, Edge, Firefox).
+// 2) If the browser can't decode the container (e.g. iPhone .mov in Safari), play the video once,
+//    silently, and record its sound in real time.
+function toMono16k(chans, rate) {
+  const n = chans[0].length, mono = new Float32Array(n);
+  for (const ch of chans) for (let i = 0; i < n; i++) mono[i] += ch[i] / chans.length;
+  if (rate === 16000) return mono;
+  const ratio = rate / 16000, out = new Float32Array(Math.floor(n / ratio));
+  const win = Math.max(1, Math.round(ratio));
+  for (let i = 0; i < out.length; i++) {
+    // Box low-pass over the source samples that map to this output sample, then pick.
+    const c = Math.floor(i * ratio); let sum = 0, k = 0;
+    for (let j = c; j < c + win && j < n; j++, k++) sum += mono[j];
+    out[i] = k ? sum / k : 0;
+  }
+  return out;
+}
+async function decodeFull(file) {
   const AC = window.AudioContext || window.webkitAudioContext;
-  const ac = new AC({ sampleRate: 16000 });
+  const ac = new AC();
   try {
-    const buf = await ac.decodeAudioData(await file.arrayBuffer());
-    if (buf.numberOfChannels === 1) return buf.getChannelData(0);
-    const out = new Float32Array(buf.length);
-    for (let c = 0; c < buf.numberOfChannels; c++) {
-      const d = buf.getChannelData(c);
-      for (let i = 0; i < d.length; i++) out[i] += d[i] / buf.numberOfChannels;
-    }
-    return out;
-  } finally { ac.close(); }
+    const data = await file.arrayBuffer();
+    const buf = await new Promise((res, rej) => {
+      const p = ac.decodeAudioData(data, res, rej);
+      if (p && p.then) p.then(res, rej);
+    });
+    const chans = [];
+    for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+    return toMono16k(chans, buf.sampleRate);
+  } finally { ac.close && ac.close(); }
+}
+let realtimeJob = null;
+async function captureRealtime(ui) {
+  ensureAudioGraph();
+  await audioCtx.resume();
+  const dur = video.duration;
+  if (!isFinite(dur) || dur <= 0) throw new Error('Couldn’t read the video length.');
+  const sp = audioCtx.createScriptProcessor(4096, 2, 1);
+  const chunks = [];
+  sp.onaudioprocess = e => {
+    if (video.paused) return;
+    const ib = e.inputBuffer, chans = [];
+    for (let c = 0; c < ib.numberOfChannels; c++) chans.push(new Float32Array(ib.getChannelData(c)));
+    chunks.push(chans);
+  };
+  mediaNode.connect(sp); sp.connect(audioCtx.destination);
+  speakerGain.gain.value = 0;
+  const job = realtimeJob = { cancelled: false };
+  try {
+    video.pause();
+    video.currentTime = 0;
+    await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; });
+    try { await video.play(); } catch { throw new Error('needs-tap'); }
+    await new Promise(resolve => {
+      const tick = setInterval(() => {
+        ui.onText(`Reading audio… ${fmt(video.currentTime)} of ${fmt(dur)} (your browser can’t extract it instantly)`);
+        ui.onPct(video.currentTime / dur * 100);
+        if (job.cancelled || video.ended) { clearInterval(tick); resolve(); }
+      }, 200);
+    });
+    if (job.cancelled) throw new Error('cancelled');
+  } finally {
+    video.pause();
+    sp.disconnect(); try { mediaNode.disconnect(sp); } catch { /* already */ }
+    speakerGain.gain.value = 1;
+    realtimeJob = null;
+  }
+  const nch = Math.max(...chunks.map(c => c.length), 1);
+  const total = chunks.reduce((a, c) => a + c[0].length, 0);
+  const merged = Array.from({ length: nch }, () => new Float32Array(total));
+  let o = 0;
+  for (const c of chunks) { for (let k = 0; k < nch; k++) merged[k].set(c[Math.min(k, c.length - 1)], o); o += c[0].length; }
+  return toMono16k(merged, audioCtx.sampleRate);
+}
+async function extractAudio(ui) {
+  if (!S.decodeFailed && !window.__vczForceRealtime) {
+    try { return await decodeFull(S.file); } catch { S.decodeFailed = true; }
+  }
+  return captureRealtime(ui);
 }
 
 /**
@@ -418,10 +486,11 @@ async function decodeAudio(file) {
  */
 async function transcribe({ lang, task, quality }, ui) {
   ui.onText('Reading the audio track…'); ui.onPct(null);
-  let audio;
-  try { audio = await decodeAudio(S.file); }
-  catch { throw new Error('Couldn’t read an audio track from this file. Does the video have sound?'); }
-  if (!audio.length) throw new Error('The audio track is empty.');
+  const audio = await extractAudio(ui);
+  window.__vczAudioLength = audio.length;
+  let peak = 0;
+  for (let i = 0; i < audio.length; i += 50) peak = Math.max(peak, Math.abs(audio[i]));
+  if (!audio.length || peak < 0.002) throw new Error('This video seems to have no sound, so there is nothing to transcribe.');
   worker = worker || new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
   return new Promise((resolve, reject) => {
     busyGen = { reject };
@@ -444,6 +513,7 @@ async function transcribe({ lang, task, quality }, ui) {
   });
 }
 function cancelTranscribe() {
+  if (realtimeJob) { realtimeJob.cancelled = true; return; }
   if (!busyGen) return;
   worker.terminate(); worker = null;
   const r = busyGen.reject; busyGen = null;
@@ -464,25 +534,55 @@ function describeResult(res) {
     ' Check the text, pick a template, then export.';
 }
 
-$('genBtn').onclick = async () => {
-  if (!S.file || busyGen) return;
+// One generation runner for both the start screen and the editor. Progress shows in the editor's card.
+let genRunning = false;
+function genUI(on) {
+  $('genProg').hidden = !on;
+  $('genProgTap').hidden = true;
+  $('genProgCancel').hidden = !on;
+  $('genCancel').hidden = !on;
+}
+async function runGeneration({ lang, mode, quality }) {
+  if (!S.file || genRunning) return;
+  genRunning = true;
+  const task = mode === 'english' && lang.whisper !== 'english' ? 'translate' : 'transcribe';
+  S.pendingMode = mode;
+  genUI(true); syncActions();
+  $('genProgBar').style.width = '0';
+  try {
+    const res = await transcribe({ lang, task, quality }, {
+      onText: t => { $('genProgText').textContent = t; },
+      onPct: p => { $('genProgBar').style.width = p == null ? '0' : `${p}%`; },
+    });
+    if (!applyTranscript(res, mode)) status('No speech was found in this video. You can add captions by hand.');
+    else status(describeResult(res));
+    genUI(false);
+  } catch (err) {
+    if (err.message === 'needs-tap') {
+      // iPhone needs a fresh tap before it will play the video to read its sound.
+      $('genProgText').textContent = 'Your browser needs one tap to read the audio.';
+      $('genProgTap').hidden = false; $('genProgCancel').hidden = true;
+      $('genProgTap').onclick = () => { $('genProgTap').hidden = true; genRunning = false; runGeneration({ lang, mode, quality }); };
+      return;
+    }
+    genUI(false);
+    status(err.message === 'cancelled' ? 'Transcription cancelled. Open “Generate captions from audio” to try again.'
+      : `Couldn’t generate captions: ${err.message} The first run needs internet to download the speech model.`);
+    $('genBox').open = true;
+  } finally {
+    genRunning = false; syncActions();
+  }
+}
+$('genProgCancel').onclick = () => cancelTranscribe();
+
+$('genBtn').onclick = () => {
+  if (!S.file || genRunning) return;
   if (S.segments.length && !confirm('Replace the current captions with a new transcription?')) return;
   const lang = LANGUAGES[$('lang').value];
-  $('genCancel').hidden = false; syncActions();
-  let pct = null;
-  try {
-    const res = await transcribe({
-      lang, quality: $('model').value, task: $('translate').checked && lang.whisper !== 'english' ? 'translate' : 'transcribe',
-    }, { onText: t => status(t, pct), onPct: p => { pct = p; } });
-    if (!applyTranscript(res, lang.hinglish ? 'hinglish' : S.hinglish ? 'hinglish' : 'native')) status('No speech was found in this file.');
-    else status(describeResult(res));
-  } catch (err) {
-    status(err.message === 'cancelled' ? 'Transcription cancelled.' : `Transcription failed: ${err.message} The first run needs an internet connection to download the speech model.`);
-  } finally {
-    $('genCancel').hidden = true; syncActions();
-  }
+  const mode = lang.hinglish || S.hinglish ? 'hinglish' : $('translate').checked ? 'english' : 'native';
+  runGeneration({ lang, mode, quality: $('model').value });
 };
-$('genCancel').onclick = cancelTranscribe;
+$('genCancel').onclick = () => cancelTranscribe();
 
 // ---------- live mode ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -647,54 +747,137 @@ function setExportUI(on) {
   document.body.classList.toggle('exporting', on);
   syncActions();
 }
-async function exportVideo() {
+
+// Export canvas: separate from the preview so the file keeps the original resolution.
+// One opaque canvas for normal video, one with an alpha channel for transparent captions.
+const xcanvasOpaque = document.createElement('canvas');
+const xcanvasAlpha = document.createElement('canvas');
+const xctxOpaque = xcanvasOpaque.getContext('2d', { alpha: false });
+const xctxAlpha = xcanvasAlpha.getContext('2d', { alpha: true });
+
+function exportSizes() {
+  const vw = video.videoWidth || 1080, vh = video.videoHeight || 1920;
+  const long = Math.max(vw, vh), out = [];
+  const add = (label, l) => {
+    const k = Math.min(1, l / long);
+    const w = Math.round(vw * k / 2) * 2, h = Math.round(vh * k / 2) * 2;
+    if (!out.some(o => o.w === w)) out.push({ label: `${label} · ${w}×${h}`, w, h });
+  };
+  add('Original', long); add('1080p', 1920); add('720p', 1280);
+  return out;
+}
+const alphaMime = () => ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+
+function openExportDialog() {
   if (S.exporting || !S.file) return;
-  if (!window.MediaRecorder || !canvas.captureStream) return toast('Export needs MediaRecorder, which this browser doesn’t support. Try Chrome, Edge or Firefox on a computer.', 6000);
-  const mimeType = pickMime();
-  if (!mimeType) return toast('This browser can’t record video. Try Chrome, Edge or Firefox.', 6000);
+  const sizes = exportSizes();
+  const sel = $('xRes'); sel.innerHTML = '';
+  sizes.forEach((o, i) => { const opt = document.createElement('option'); opt.value = i; opt.textContent = o.label; sel.appendChild(opt); });
+  const hasAlpha = !!alphaMime();
+  $('xKindAlpha').disabled = !hasAlpha;
+  $('xAlphaNote').textContent = hasAlpha ? 'WebM with a real transparent background. Works in Premiere, DaVinci Resolve, After Effects and Final Cut (with a plug-in).'
+    : 'Not available in this browser (Safari can’t record WebM). Use green screen instead, or open this site in Chrome.';
+  if (!hasAlpha && $('xKindAlpha').checked) $('xKindVideo').checked = true;
+  const long = Math.max(video.videoWidth, video.videoHeight);
+  $('xNote').textContent = `Takes about ${fmt(video.duration)} (it records in real time). Keep this tab open.` +
+    (long > 1920 ? ' Original 4K needs a fast computer; choose 1080p if the export stutters.' : '');
+  $('xDlg').showModal ? $('xDlg').showModal() : $('xDlg').setAttribute('open', '');
+}
+$('exportBtn').onclick = openExportDialog;
+$('xClose').onclick = () => $('xDlg').close();
+$('xGo').onclick = e => {
+  e.preventDefault();
+  const kind = document.querySelector('input[name=xKind]:checked').value;
+  const size = exportSizes()[+$('xRes').value];
+  $('xDlg').close();
+  exportVideo({ kind, size });
+};
+
+async function exportVideo({ kind = 'video', size } = {}) {
+  if (S.exporting || !S.file) return;
+  if (!window.MediaRecorder || !xcanvasOpaque.captureStream) return toast('Export needs MediaRecorder, which this browser doesn’t support. Try Chrome, Edge, Firefox or Safari.', 6000);
+  const overlay = kind !== 'video';
+  const mimeType = kind === 'alpha' ? alphaMime() : pickMime();
+  if (!mimeType) return toast('This browser can’t record video. Try Chrome, Edge, Firefox or Safari.', 6000);
   const dur = video.duration;
   if (!isFinite(dur) || dur <= 0) return toast('Couldn’t read the video length, so it can’t be exported.');
-  if (!S.segments.length && !confirm('There are no captions yet. Export the video without captions?')) return;
+  if (!S.segments.length && !confirm(overlay ? 'There are no captions yet, so this file would be empty. Continue anyway?' : 'There are no captions yet. Export the video without captions?')) return;
   if (dur > 300 && !confirm(`This video is ${fmt(dur)} long. Export runs in real time, so it will take about ${fmt(dur)} and the tab must stay open. Continue?`)) return;
 
+  size = size || exportSizes()[0];
+  const xcanvas = kind === 'alpha' ? xcanvasAlpha : xcanvasOpaque;
+  const xctx = kind === 'alpha' ? xctxAlpha : xctxOpaque;
+  xcanvas.width = size.w; xcanvas.height = size.h;
   setExportUI(true);
-  $('exportTitle').textContent = 'Exporting video…';
+  $('exportTitle').textContent = kind === 'video' ? 'Exporting video…' : kind === 'alpha' ? 'Exporting transparent captions…' : 'Exporting green-screen captions…';
   $('exportBar').style.width = '0%';
   const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-  $('exportText').textContent = `Preparing ${ext.toUpperCase()} export…`;
+  $('exportText').textContent = `Preparing ${ext.toUpperCase()} · ${size.w}×${size.h}…`;
   const job = exportJob = { cancelled: false, hidden: false };
+  const t0 = tpl(), opts = { scale: S.o.scale, pos: S.o.pos ?? undefined, fill: video };
+  const paint = t => {
+    if (kind === 'alpha') xctx.clearRect(0, 0, size.w, size.h);
+    else if (kind === 'green') { xctx.fillStyle = '#00FF00'; xctx.fillRect(0, 0, size.w, size.h); }
+    else if (video.readyState >= 2 && video.videoWidth) xctx.drawImage(video, 0, 0, size.w, size.h);
+    else { xctx.fillStyle = '#0d0d16'; xctx.fillRect(0, 0, size.w, size.h); }
+    drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, overlay ? { ...opts, fill: null } : opts);
+  };
+  let stopClock = null;
   try {
-    ensureAudioGraph();
-    await audioCtx.resume();
-    speakerGain.gain.value = 0; // silent while exporting; the audio still goes into the file
-    video.pause();
-    video.currentTime = 0;
-    await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; });
+    // Match the source: bitrate from the file (capped), frame rate from the decoded frames.
+    const srcBps = S.file.size * 8 / dur;
+    const k = (size.w * size.h) / ((video.videoWidth || size.w) * (video.videoHeight || size.h));
+    const vbr = Math.round(Math.min(60e6, Math.max(4e6, srcBps * 1.15 * k)));
+    const useRVFC = !overlay && !!video.requestVideoFrameCallback;
+    const stream = useRVFC ? xcanvas.captureStream() : xcanvas.captureStream(30);
 
-    const stream = canvas.captureStream(30);
-    audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
-    const px = canvas.width * canvas.height;
-    const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: Math.round(Math.min(12e6, Math.max(3e6, px * 4.5))), audioBitsPerSecond: 160000 });
+    if (!overlay) {
+      ensureAudioGraph();
+      await audioCtx.resume();
+      speakerGain.gain.value = 0; // silent while exporting; the audio still goes into the file
+      audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+      video.pause();
+      video.currentTime = 0;
+      await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; });
+    }
+    const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: vbr, ...(overlay ? {} : { audioBitsPerSecond: 192000 }) });
     const parts = [];
     rec.ondataavailable = e => e.data.size && parts.push(e.data);
     const stopped = new Promise(r => { rec.onstop = r; });
-    const ended = new Promise(r => { video.onended = r; job.finish = r; });
     const onVis = () => { if (document.hidden) job.hidden = true; };
     document.addEventListener('visibilitychange', onVis);
-    // Draw on every decoded video frame when the browser supports it.
-    if (video.requestVideoFrameCallback) {
-      const step = () => { if (S.exporting) { drawFrame(); video.requestVideoFrameCallback(step); } };
-      video.requestVideoFrameCallback(step);
+    let clock;
+    const ended = new Promise(r => { job.finish = r; });
+    if (overlay) {
+      // Captions only: no video to play, so drive time from the clock.
+      const start = performance.now();
+      clock = () => (performance.now() - start) / 1000;
+      paint(0);
+      const timer = setInterval(() => { const t = clock(); paint(Math.min(t, dur)); if (t >= dur) job.finish(); }, 1000 / 30);
+      stopClock = () => clearInterval(timer);
+      rec.start(1000);
+    } else {
+      clock = () => video.currentTime;
+      video.onended = () => job.finish();
+      if (useRVFC) {
+        const step = () => { if (S.exporting) { paint(video.currentTime); video.requestVideoFrameCallback(step); } };
+        video.requestVideoFrameCallback(step);
+      } else {
+        const timer = setInterval(() => paint(video.currentTime), 1000 / 30);
+        stopClock = () => clearInterval(timer);
+      }
+      paint(0);
+      rec.start(1000);
+      await video.play();
     }
-    rec.start(1000);
-    await video.play();
     const tick = setInterval(() => {
-      const p = Math.min(1, video.currentTime / dur);
+      const p = Math.min(1, clock() / dur);
       $('exportBar').style.width = `${(p * 100).toFixed(1)}%`;
-      $('exportText').textContent = `${Math.round(p * 100)}% · ${fmt(video.currentTime)} of ${fmt(dur)}${job.hidden ? ' · tab was hidden, some frames may be missing' : ''}`;
+      $('exportText').textContent = `${Math.round(p * 100)}% · ${fmt(clock())} of ${fmt(dur)} · ${size.w}×${size.h}${job.hidden ? ' · tab was hidden, some frames may be missing' : ''}`;
     }, 250);
     await ended;
     clearInterval(tick);
+    stopClock && stopClock();
     video.onended = null;
     document.removeEventListener('visibilitychange', onVis);
     video.pause();
@@ -709,19 +892,22 @@ async function exportVideo() {
       $('exportText').textContent = 'Finishing file…';
       blob = await window.ysFixWebmDuration(blob, dur * 1000, { logger: false });
     }
-    const name = `${S.file.name.replace(/\.[^.]+$/, '')}-captioned.${ext}`;
+    const suffix = kind === 'video' ? 'captioned' : kind === 'alpha' ? 'captions-transparent' : 'captions-greenscreen';
+    const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${suffix}.${ext}`;
     download(blob, name);
-    status(`Exported “${name}” (${fmtBytes(blob.size)}).` + (ext === 'webm' ? ' This browser can only record WebM. YouTube accepts it; for Instagram or iPhone, export from Chrome (version 126 or newer) or Safari to get MP4.' : ''));
+    status(`Exported “${name}” (${fmtBytes(blob.size)}, ${size.w}×${size.h}).` +
+      (kind === 'green' ? ' In CapCut or InShot: add it as an overlay, then use Chroma Key on the green.' : '') +
+      (kind === 'video' && ext === 'webm' ? ' This browser can only record WebM. YouTube accepts it; for Instagram or iPhone, export from Chrome (126+) or Safari to get MP4.' : ''));
   } catch (err) {
     status(`Export failed: ${err.message || err}`);
   } finally {
+    stopClock && stopClock();
     if (speakerGain) speakerGain.gain.value = 1;
     exportJob = null;
     setExportUI(false);
     video.currentTime = 0;
   }
 }
-$('exportBtn').onclick = exportVideo;
 $('exportCancel').onclick = () => { if (exportJob) { exportJob.cancelled = true; exportJob.finish && exportJob.finish(); } };
 
 // ---------- SRT ----------
@@ -753,15 +939,38 @@ function fileChunks() {
   if (chunkCache.key !== key || chunkCache.hinglish !== S.hinglish || chunkCache.max !== max) chunkCache = { key, max, hinglish: S.hinglish, chunks: C.toChunks(S.segments, transform, max) };
   return chunkCache.chunks;
 }
+// Sample words shown on the video until real captions exist, so template choice is visible immediately.
+const SAMPLE_TEXT = { hinglish: 'aapke captions bilkul aise dikhenge', native: 'your captions will look like this', english: 'your captions will look like this' };
+let sampleCache = { key: null, chunks: [] };
+function sampleChunks() {
+  const lang = LANGUAGES[$('lang').value] || {};
+  const text = S.pendingMode === 'hinglish' || S.hinglish ? SAMPLE_TEXT.hinglish
+    : lang.whisper === 'hindi' && S.pendingMode !== 'english' ? 'आपके कैप्शन बिल्कुल ऐसे दिखेंगे' : SAMPLE_TEXT.native;
+  const key = text + wordsPerCaption();
+  if (sampleCache.key !== key) sampleCache = { key, chunks: C.toChunks([C.makeSegment(C.spreadWords(text, 0.15, 3.6))], t => t, wordsPerCaption()) };
+  return sampleCache.chunks;
+}
 function drawFrame() {
   const W = canvas.width, H = canvas.height;
   const t0 = tpl(), opts = { scale: S.o.scale, pos: S.o.pos ?? undefined, fill: video };
   if (S.mode === 'file') {
+    if (S.exporting) return video.currentTime; // the export canvas does the work; the preview is covered
     const vw = video.videoWidth, vh = video.videoHeight;
-    if (vw && !S.exporting && Math.abs(W / H - vw / vh) > 0.01) fitCanvas(vw, vh);
+    if (vw && Math.abs(W / H - vw / vh) > 0.01) fitCanvas(vw, vh);
     if (video.readyState >= 2 && vw) ctx.drawImage(video, 0, 0, canvas.width, canvas.height); else drawPlaceholder();
     const t = video.currentTime;
-    drawCaption(ctx, canvas.width, canvas.height, findChunk(fileChunks(), t), t, t0, opts);
+    if (!S.segments.length && S.file) {
+      const st = (performance.now() / 1000) % 4.2;
+      drawCaption(ctx, canvas.width, canvas.height, findChunk(sampleChunks(), st), st, t0, opts);
+      const fs = Math.max(11, canvas.width * 0.028);
+      ctx.save(); ctx.font = `600 ${fs}px Inter, sans-serif`; ctx.textBaseline = 'top';
+      const label = genRunning ? 'Sample text · your captions are being generated' : 'Sample text · no captions yet';
+      const w = ctx.measureText(label).width + fs;
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(fs * 0.6, fs * 0.6, w, fs * 1.6);
+      ctx.fillStyle = '#fff'; ctx.fillText(label, fs * 1.1, fs * 0.9); ctx.restore();
+    } else {
+      drawCaption(ctx, canvas.width, canvas.height, findChunk(fileChunks(), t), t, t0, opts);
+    }
     return t;
   }
   if (cam && video.readyState >= 2) {
@@ -871,11 +1080,15 @@ function combo(el, placeholder, searchText, onChange) {
   };
 }
 
+const store = {
+  get() { try { return JSON.parse(localStorage.getItem('vcz-langs') || 'null'); } catch { return null; } },
+  set(v) { try { localStorage.setItem('vcz-langs', JSON.stringify(v)); } catch { /* private mode */ } },
+};
 const spokenItems = LANGUAGES.map((l, i) => ({ id: i, label: l.name, lang: l }))
   .filter(it => !it.lang.hinglish)
   .sort((a, b) => (a.lang.whisper ? 1 : 0) - (b.lang.whisper ? 1 : 0) || a.label.localeCompare(b.label));
 const start = { spoken: null, caption: null };
-const captionCombo = combo($('captionCombo'), 'Select a language', 'Search caption language…', it => { start.caption = it; syncStart(); });
+const captionCombo = combo($('captionCombo'), 'Select a language', 'Search caption language…', it => { start.caption = it; syncStart(); beginFromStart(); });
 const spokenCombo = combo($('spokenCombo'), 'Select a language', 'Search spoken language…', it => {
   start.spoken = it;
   const l = it && it.lang;
@@ -889,24 +1102,55 @@ const spokenCombo = combo($('spokenCombo'), 'Select a language', 'Search spoken 
   if (opts.length === 1 || (start.caption && !opts.some(o => o.id === start.caption.id))) captionCombo.set(opts[0] && opts[0].id);
   start.caption = captionCombo.get();
   syncStart();
+  if (it) beginFromStart();
 });
 spokenCombo.setItems(spokenItems);
+{
+  // Remember last languages so the next upload starts captions immediately.
+  const saved = store.get();
+  const sp = saved && spokenItems.find(x => x.lang.name === saved.spoken);
+  if (sp) {
+    spokenCombo.set(sp.id);
+    start.spoken = sp;
+    const own = sp.lang.name.split(' — ')[0].replace(/ \(.*\)/, '');
+    const opts = sp.lang.whisper === 'hindi'
+      ? [{ id: 'native', label: 'Hindi' }, { id: 'hinglish', label: 'Hinglish (Roman Hindi)' }, { id: 'english', label: 'English' }]
+      : sp.lang.whisper === 'english' ? [{ id: 'native', label: 'English' }]
+        : !sp.lang.whisper ? [{ id: 'native', label: 'Same as spoken' }, { id: 'english', label: 'English' }]
+          : [{ id: 'native', label: own }, { id: 'english', label: 'English' }];
+    captionCombo.setItems(opts);
+    captionCombo.set(saved.caption);
+    start.caption = captionCombo.get();
+    if (saved.quality) $('startModel').value = saved.quality;
+  }
+}
 
 function syncStart() {
   const go = $('startGo');
-  if (go.classList.contains('busy')) return;
-  go.disabled = !(S.file && start.spoken && start.caption);
+  go.disabled = !(S.file && start.spoken && start.caption) || genRunning;
   $('startGoText').textContent = !S.file ? 'Upload Video First' : !start.spoken || !start.caption ? 'Choose Languages' : 'Generate Captions';
+  if (S.file && (!start.spoken || !start.caption)) $('startMsg').textContent = 'Choose the spoken language. Captions start automatically.';
+  else if ($('startMsg').textContent.startsWith('Choose the spoken')) $('startMsg').textContent = '';
+}
+function beginFromStart() {
+  if (!S.file || !start.spoken || !start.caption || genRunning) return;
+  store.set({ spoken: start.spoken.lang.name, caption: start.caption.id, quality: $('startModel').value });
+  $('lang').value = start.spoken.id;
+  $('model').value = $('startModel').value;
+  $('translate').checked = start.caption.id === 'english';
+  openEditor();
+  runGeneration({ lang: start.spoken.lang, mode: start.caption.id, quality: $('startModel').value });
 }
 
 async function startFile(file) {
-  if (!file || busyGen) return;
+  if (!file || genRunning) return;
   if (!(await loadFile(file))) return;
   $('startVideo').src = S.fileURL;
   $('startDrop').hidden = true;
   $('startPreview').hidden = false;
   $('startMeta').textContent = fileMeta();
   syncStart();
+  beginFromStart();
 }
 $('startFile').onchange = e => { startFile(e.target.files[0]); e.target.value = ''; };
 const sd = $('startDrop');
@@ -914,7 +1158,7 @@ const sd = $('startDrop');
 ['dragleave', 'drop'].forEach(ev => sd.addEventListener(ev, e => { e.preventDefault(); sd.classList.remove('over'); }));
 sd.addEventListener('drop', e => startFile(e.dataTransfer.files[0]));
 $('startRemove').onclick = () => {
-  if (busyGen) return;
+  if (genRunning) return;
   $('startVideo').removeAttribute('src'); $('startVideo').load();
   video.removeAttribute('src'); video.load();
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
@@ -923,39 +1167,8 @@ $('startRemove').onclick = () => {
   $('drop').classList.remove('hide');
   renderSegs(); syncActions(); syncStart();
 };
-
-$('startGo').onclick = async () => {
-  const go = $('startGo'), bar = $('startBar'), txt = $('startGoText');
-  const lang = start.spoken.lang, mode = start.caption.id;
-  const task = mode === 'english' && lang.whisper !== 'english' ? 'translate' : 'transcribe';
-  go.classList.add('busy'); go.disabled = true;
-  $('startCancel').hidden = false;
-  $('startMsg').textContent = '';
-  $('startVideo').pause();
-  try {
-    const res = await transcribe({ lang, task, quality: $('startModel').value }, {
-      onText: t => { txt.textContent = t; },
-      onPct: p => { bar.style.width = p == null ? '0' : `${p}%`; },
-    });
-    $('lang').value = start.spoken.id;
-    $('translate').checked = task === 'translate';
-    $('model').value = $('startModel').value;
-    if (!applyTranscript(res, mode)) {
-      $('startMsg').textContent = 'No speech was found in this video. You can still open the editor and add captions by hand.';
-      return;
-    }
-    openEditor();
-    status(describeResult(res));
-  } catch (err) {
-    $('startMsg').textContent = err.message === 'cancelled' ? 'Cancelled.'
-      : `Couldn’t generate captions: ${err.message} The first run needs internet to download the speech model.`;
-  } finally {
-    go.classList.remove('busy'); bar.style.width = '0';
-    $('startCancel').hidden = true;
-    syncStart();
-  }
-};
-$('startCancel').onclick = cancelTranscribe;
+$('startGo').onclick = () => beginFromStart();
+$('startCancel').onclick = () => cancelTranscribe();
 $('startLive').onclick = e => { e.preventDefault(); openEditor(); setMode('live'); };
 $('startSkip').onclick = e => { e.preventDefault(); openEditor(); };
 
