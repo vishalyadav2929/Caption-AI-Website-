@@ -16,6 +16,7 @@ There's no account, payment or server. Everything runs in the visitor's browser.
 | Style | Size, weight, case, text colour, spoken-word colour, outline colour and thickness, shadow, background colour and opacity, alignment, vertical position, max line width, line spacing. **Reset to template** is included. |
 | Preview | Canvas preview with play/pause, seek, time, full screen, portrait and landscape. Preview and export use the same renderer, and captions are kept inside the frame. |
 | Export | Captions are drawn into the video pixels, original audio is kept, there's a progress bar and Cancel, and the file is downloaded directly. **MP4 (H.264)** when the browser can record it, otherwise **WebM** (VP9/Opus) with a corrected duration header. |
+| Translation | Hindi ↔ Hinglish on the device. Other languages (Hindi → Bangla, English → Hindi, …) use Chrome's on-device translator when present, otherwise the free MyMemory service (caption text only, no key, about 5,000 characters per day per visitor). The caption language is detected from the text's script. |
 | Live mode | Camera + browser speech recognition, with captions drawn live and recordable. |
 
 ## Technology choices
@@ -80,6 +81,7 @@ site/            ← what Netlify publishes
   js/templates.js      caption styles
   js/gallery.js        template previews
   js/languages.js      languages + Hindi → Hinglish
+  js/translate.js      caption language detection + online translation fallback
 tests/unit       node --test
 tests/e2e        Playwright end-to-end test incl. export verified with ffprobe
 tests/fixtures   small test videos
