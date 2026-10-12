@@ -259,16 +259,26 @@ await step('landscape video sizes the canvas to 16:9', async () => {
   assert.deepEqual(dims, [960, 540]);
 });
 
-await step('mobile layout has no horizontal scroll', async () => {
-  const m = await browser.newPage({ viewport: { width: 375, height: 812 } });
-  for (const p of ['index.html', 'templates.html', 'app.html']) {
-    await m.goto(`${BASE}/${p}`);
-    await m.waitForTimeout(800);
-    const over = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    assert.ok(over <= 1, `${p} overflows by ${over}px`);
-    await m.screenshot({ path: join(OUT, `mobile-${p.replace('.html', '')}.png`) });
+await step('no horizontal overflow on phones, tablets and laptops (incl. editor with a video loaded)', async () => {
+  const sizes = [[375, 667, true], [390, 844, true], [412, 915, true], [768, 1024, true], [1024, 768, true], [1280, 720, false], [1440, 900, false]];
+  for (const [w, h, mobile] of sizes) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile && w < 1000, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
+    const m = await ctx.newPage();
+    const over = async label => {
+      const r = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, innerWidth]);
+      assert.ok(r[0] <= r[1] + 1 && r[2] <= r[1] + 1, `${w}px ${label}: page is ${r[0]}px wide (viewport ${r[1]}, innerWidth ${r[2]})`);
+    };
+    for (const p of ['index.html', 'templates.html', 'privacy.html', 'app.html']) { await m.goto(`${BASE}/${p}`); await m.waitForTimeout(300); await over(p); }
+    await m.click('#startSkip');
+    await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+    await m.waitForTimeout(400);
+    await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+    await m.waitForTimeout(300);
+    await over('editor with video');
+    if (w === 390) await m.screenshot({ path: join(OUT, 'mobile-editor.png') });
+    await m.click('#exportBtn'); await m.waitForTimeout(150); await over('export dialog');
+    await ctx.close();
   }
-  await m.close();
 });
 
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });

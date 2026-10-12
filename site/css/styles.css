@@ -89,7 +89,9 @@ footer { padding: 36px 0; color: var(--muted); font-size: 14px; text-align: cent
 .tpl.on { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109,40,217,.22); }
 
 /* Editor */
-.app { display: grid; grid-template-columns: 340px 1fr 340px; gap: 16px; padding: 16px; height: calc(100vh - 62px); }
+.app { display: grid; grid-template-columns: minmax(250px, 320px) minmax(0, 1fr) minmax(290px, 340px); gap: 16px; padding: 16px; height: calc(100vh - 62px); height: calc(100dvh - 62px); }
+/* Grid and flex children may shrink below their content width; without this, one long row of buttons widens the whole page. */
+.app > *, .panel, .panel-b, .stage, .tabs { min-width: 0; }
 .panel { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; }
 .panel-h { padding: 14px 16px; border-bottom: 1px solid var(--line); font-weight: 700; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .panel-b { padding: 14px 16px; overflow-y: auto; flex: 1; min-height: 0; }
@@ -136,13 +138,7 @@ footer { padding: 36px 0; color: var(--muted); font-size: 14px; text-align: cent
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--card); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; font-size: 14px; z-index: 50; box-shadow: 0 10px 40px rgba(0,0,0,.12); }
 .toast:empty { display: none; }
 
-@media (max-width: 1100px) {
-  .app { grid-template-columns: 1fr; height: auto; }
-  .stage { order: -1; }
-  .canvas-box { min-height: 60vh; }
-  .panel { max-height: 70vh; }
-  .panel .grid { grid-template-columns: repeat(3, 1fr); }
-}
+
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }
   .nav-links { display: none; }
@@ -258,21 +254,7 @@ label.inline b { color: var(--accent); }
   .nav .logo { font-size: 16px; }
   .nav .logo-mark { display: none; }
   #srtBtn { display: none; }
-  .app { padding: 10px; gap: 10px; }
-  .canvas-box { min-height: 52vh; }
 }
-@media (max-width: 1100px) {
-  .app > aside[aria-label="Captions and style"] { order: 1; }
-  .app > aside[aria-label="Templates"] { order: 2; max-height: none; }
-  .app > aside[aria-label="Templates"] .grid { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(150px, 34%); overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
-  .app > aside[aria-label="Templates"] .tpl { scroll-snap-align: start; }
-  .app > aside[aria-label="Templates"] .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
-  .app > aside[aria-label="Templates"] .tab { flex: 0 0 auto; }
-}
-@media (max-width: 640px) {
-  .app > aside[aria-label="Templates"] .grid { grid-auto-columns: 46%; }
-}
-
 /* Transcription progress card */
 .gen-prog { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; background: #faf7ff; display: grid; gap: 8px; }
 .gen-prog-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -294,3 +276,45 @@ label.inline b { color: var(--accent); }
 .xdlg select { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
 .xbtns { justify-content: flex-end; }
 .xbtns .btn { flex: 0 0 auto; }
+
+/* ---------- Editor: tablets and phones ----------
+   Preview pinned at the top, templates as a swipeable strip right below it, then captions/style.
+   The page scrolls as one column; panels don't scroll inside themselves. */
+@media (max-width: 1100px) {
+  .app { grid-template-columns: minmax(0, 1fr); height: auto; padding: 0 12px 24px; gap: 12px; }
+  .stage { order: 0; position: sticky; top: 62px; z-index: 6; background: var(--bg); padding: 8px 0; gap: 8px; box-shadow: 0 10px 18px -16px rgba(24,24,27,.35); }
+  .mode-switch { display: none; }
+  .canvas-box { flex: none; height: min(46vh, 520px); min-height: 0; }
+  .transport { flex-wrap: nowrap; gap: 6px; }
+  .transport .seek { min-width: 0; }
+  .meta { display: none; }
+  .app > aside[aria-label="Templates"] { order: 1; }
+  .app > aside[aria-label="Captions and style"] { order: 2; }
+  .panel { max-height: none; }
+  .panel-b { overflow: visible; }
+  .app > aside[aria-label="Templates"] .panel-h { display: none; }
+  .app > aside[aria-label="Templates"] .panel-b { padding: 10px; }
+  .app > aside[aria-label="Templates"] .tabs { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; margin-bottom: 8px; padding-bottom: 2px; scrollbar-width: none; }
+  .app > aside[aria-label="Templates"] .tabs::-webkit-scrollbar { display: none; }
+  .app > aside[aria-label="Templates"] .tab { flex: 0 0 auto; }
+  .app > aside[aria-label="Templates"] .grid { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 168px; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; }
+  .app > aside[aria-label="Templates"] .tpl { scroll-snap-align: start; padding: 5px 5px 7px; border-radius: 12px; }
+  .app > aside[aria-label="Templates"] .tpl .nm { font-size: 12px; padding-top: 5px; }
+}
+@media (max-width: 640px) {
+  .nav .wrap { height: 54px; padding: 0 12px; }
+  .stage { top: 54px; }
+  .canvas-box { height: 40vh; }
+  .app > aside[aria-label="Templates"] .grid { grid-auto-columns: 132px; }
+  .nav-actions { gap: 6px; }
+  .nav-actions .icon-btn { min-width: 34px; padding: 6px 8px; }
+  #fileControls label.btn { display: none; } /* Replace lives in the start screen on phones */
+  /* iPhone zooms the page when a focused field's text is under 16px. */
+  input[type=text], input:not([type]), input[inputmode], textarea, select, .t-in, .combo-pop input { font-size: 16px; }
+  .t-in { width: 84px; }
+  .ptab { padding: 12px 10px; }
+}
+@media (max-width: 380px) {
+  .nav .logo { font-size: 14px; }
+  .app > aside[aria-label="Templates"] .grid { grid-auto-columns: 118px; }
+}
