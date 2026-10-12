@@ -3,6 +3,7 @@ import { buildChunks, findChunk, drawCaption } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
 import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
+import { extractAacAdts } from './mp4audio.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
 const $ = id => document.getElementById(id);
@@ -483,13 +484,18 @@ async function decodeBuffer(data) {
 async function decodeFull(file) {
   const data = await file.arrayBuffer();
   try { return await decodeBuffer(data.slice(0)); } catch (err) {
+    // iPhone .mov in Safari: pull the AAC track out ourselves and decode it as plain AAC (instant).
+    try {
+      const { adts } = extractAacAdts(data);
+      return await decodeBuffer(adts.slice().buffer);
+    } catch { /* not AAC, or this browser can't decode it either */ }
     const patched = patchMovBrand(data);
     if (!patched) throw err;
     return decodeBuffer(patched);
   }
 }
 let realtimeJob = null;
-async function captureRealtime(ui) {
+async function captureRealtime(ui, rate = 3) {
   ensureAudioGraph();
   // iPhone only starts audio after a tap. Without it the video silently never plays.
   await Promise.race([audioCtx.resume(), new Promise(r => setTimeout(r, 1500))]);
@@ -507,6 +513,14 @@ async function captureRealtime(ui) {
   mediaNode.connect(sp); sp.connect(audioCtx.destination);
   speakerGain.gain.value = 0;
   const job = realtimeJob = { cancelled: false };
+  // Play faster than real time. With pitch correction off the browser simply resamples, so the
+  // captured audio is exact — it just arrives `rate` times faster (higher pitch), and reading it back at
+  // sampleRate / rate restores the original speed and pitch.
+  const setRate = r => {
+    video.playbackRate = r;
+    for (const k of ['preservesPitch', 'webkitPreservesPitch', 'mozPreservesPitch']) if (k in video) video[k] = r === 1;
+  };
+  setRate(rate);
   try {
     video.pause();
     video.currentTime = 0;
@@ -518,7 +532,7 @@ async function captureRealtime(ui) {
     await new Promise((resolve, reject) => {
       const tick = setInterval(() => {
         if (video.currentTime < 0.05 && Date.now() - startedAt > 4000) { clearInterval(tick); reject(new Error('needs-tap')); return; }
-        ui.onText(`Reading audio… ${fmt(video.currentTime)} of ${fmt(dur)} (your browser can’t extract it instantly)`);
+        ui.onText(`Reading audio… ${fmt(video.currentTime)} of ${fmt(dur)}`);
         ui.onPct(video.currentTime / dur * 100);
         if (job.cancelled || video.ended) { clearInterval(tick); resolve(); }
       }, 200);
@@ -526,6 +540,7 @@ async function captureRealtime(ui) {
     if (job.cancelled) throw new Error('cancelled');
   } finally {
     video.pause();
+    setRate(1);
     sp.disconnect(); try { mediaNode.disconnect(sp); } catch { /* already */ }
     speakerGain.gain.value = 1;
     realtimeJob = null;
@@ -535,13 +550,18 @@ async function captureRealtime(ui) {
   const merged = Array.from({ length: nch }, () => new Float32Array(total));
   let o = 0;
   for (const c of chunks) { for (let k = 0; k < nch; k++) merged[k].set(c[Math.min(k, c.length - 1)], o); o += c[0].length; }
-  return toMono16k(merged, audioCtx.sampleRate);
+  // Each captured sample covers `rate` times more of the video, so the effective rate is sampleRate / rate.
+  return toMono16k(merged, audioCtx.sampleRate / rate);
 }
 async function extractAudio(ui) {
   if (!S.decodeFailed && !window.__vczForceRealtime) {
     try { return await decodeFull(S.file); } catch { S.decodeFailed = true; }
   }
-  return captureRealtime(ui);
+  const fast = await captureRealtime(ui, 3);
+  // Some browsers mute audio at higher speeds; if we got silence, read it once more at normal speed.
+  let peak = 0;
+  for (let i = 0; i < fast.length; i += 50) peak = Math.max(peak, Math.abs(fast[i]));
+  return peak > 0.002 ? fast : captureRealtime(ui, 1);
 }
 
 /**
@@ -552,6 +572,7 @@ async function transcribe({ lang, task, quality }, ui) {
   ui.onText('Reading the audio track…'); ui.onPct(null);
   const audio = await extractAudio(ui);
   window.__vczAudioLength = audio.length;
+  if (window.__vczKeepAudio) window.__vczAudio = audio.slice(); // tests only
   let peak = 0;
   for (let i = 0; i < audio.length; i += 50) peak = Math.max(peak, Math.abs(audio[i]));
   if (!audio.length || peak < 0.002) throw new Error('This video seems to have no sound, so there is nothing to transcribe.');
