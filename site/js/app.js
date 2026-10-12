@@ -1,7 +1,7 @@
 import { TEMPLATES, FONTS_URL, loadTemplateFonts } from './templates.js';
 import { buildChunks, findChunk, drawCaption } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
-import { detectTextLang, onlineTranslate } from './translate.js';
+import { detectTextLang, onlineTranslate, looksEnglish } from './translate.js';
 import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
@@ -366,6 +366,8 @@ async function loadFile(file) {
   S.fileURL = url;
   S.file = file;
   S.decodeFailed = false;
+  // Start reading the sound right away, so it's ready by the time captions are requested.
+  S.audioP = decodeFull(file); S.audioP.catch(() => {});
   S.segments = []; S.selected = -1;
   hist = []; hIdx = -1; commit();
   fitCanvas(video.videoWidth || 1080, video.videoHeight || 1920);
@@ -441,6 +443,15 @@ $('fsBtn').onclick = () => {
 
 // ---------- speech-to-text ----------
 let worker = null, busyGen = null;
+function getWorker() {
+  if (!worker) {
+    worker = new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
+    worker.onerror = () => { if (!busyGen) { worker.terminate(); worker = null; } };
+  }
+  return worker;
+}
+/** Download and load the speech model in the background while the user picks languages. */
+function preloadModel(quality) { try { getWorker().postMessage({ type: 'preload', quality }); } catch { /* not critical */ } }
 // ---- audio extraction ----
 // 1) Decode the whole file at the browser's native rate (works for MP4/WebM/M4A in Chrome, Edge, Firefox).
 // 2) If the browser can't decode the container (e.g. iPhone .mov in Safari), play the video once,
@@ -556,7 +567,8 @@ async function captureRealtime(ui, rate = 3) {
 }
 async function extractAudio(ui) {
   if (!S.decodeFailed && !window.__vczForceRealtime) {
-    try { return await decodeFull(S.file); } catch { S.decodeFailed = true; }
+    const pre = S.audioP; S.audioP = null;
+    try { return await (pre || decodeFull(S.file)); } catch { S.decodeFailed = true; }
   }
   const fast = await captureRealtime(ui, 3);
   // Some browsers mute audio at higher speeds; if we got silence, read it once more at normal speed.
@@ -577,7 +589,7 @@ async function transcribe({ lang, task, quality }, ui) {
   let peak = 0;
   for (let i = 0; i < audio.length; i += 50) peak = Math.max(peak, Math.abs(audio[i]));
   if (!audio.length || peak < 0.002) throw new Error('This video seems to have no sound, so there is nothing to transcribe.');
-  worker = worker || new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
+  getWorker();
   return new Promise((resolve, reject) => {
     busyGen = { reject };
     worker.onerror = e => {
@@ -590,6 +602,7 @@ async function transcribe({ lang, task, quality }, ui) {
         const pct = data.loaded / data.total * 100;
         ui.onText(`Downloading speech model (one time)… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)}`); ui.onPct(pct);
       } else if (data.type === 'status') { ui.onText(data.text); }
+      else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
       else if (data.type === 'transcribe') {
         ui.onText(`Transcribing… part ${Math.min(data.done + 1, data.total)} of ${data.total}`); ui.onPct(data.done / data.total * 100);
       } else if (data.type === 'error') { busyGen = null; worker.terminate(); worker = null; reject(new Error(data.text)); }
@@ -641,7 +654,15 @@ async function runGeneration({ lang, mode, quality }) {
   $('genOvBar').style.width = '0';
   $('genOvText').textContent = 'Starting…';
   try {
+    // Show captions part by part while the rest is still being transcribed.
+    const soFar = [];
+    S.hinglish = mode === 'hinglish';
     const res = await transcribe({ lang, task, quality }, {
+      onWords: words => {
+        soFar.push(...words);
+        S.segments = C.segmentsFromWords(soFar, wordsPerCaption(), 32);
+        renderSegs();
+      },
       onText: t => { $('genOvText').textContent = t; },
       onPct: p => { $('genOvBar').style.width = p == null ? '0' : `${p}%`; },
     });
@@ -649,7 +670,7 @@ async function runGeneration({ lang, mode, quality }) {
     else status(describeResult(res));
     genUI(false);
     // Small models sometimes write English for Hindi (or Hinglish) speech. Turn it back into what was asked for.
-    if (S.segments.length && mode !== 'english' && lang.whisper && lang.whisper !== 'english' && S.textLang === 'en') {
+    if (S.segments.length && mode !== 'english' && lang.whisper && lang.whisper !== 'english' && S.textLang === 'en' && looksEnglish(S.segments.map(C.segmentText).join(' '))) {
       const want = LANGUAGES.find(l => l.whisper === lang.whisper && !!l.hinglish === (mode === 'hinglish'));
       toast(`The speech model wrote English. Converting to ${want.name.split(' — ')[0]}… For exact words, use “Best for Hindi” quality.`, 7000);
       await translateTo(want);
@@ -1335,6 +1356,7 @@ async function startFile(file) {
   $('startDrop').hidden = true;
   $('startPreview').hidden = false;
   $('startMeta').textContent = fileMeta();
+  preloadModel($('startModel').value);
   syncStart();
   beginFromStart();
 }

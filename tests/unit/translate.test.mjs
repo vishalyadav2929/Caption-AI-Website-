@@ -29,3 +29,9 @@ test('onlineTranslate builds the request, decodes entities and reports quota', a
   await assert.rejects(onlineTranslate('hi', 'en', 'hi', quota), /limit for today/);
   await assert.rejects(onlineTranslate('hi', 'en', 'hi', async () => { throw new TypeError('offline'); }), /No internet/);
 });
+
+test('looksEnglish tells English from rough Roman Hindi', async () => {
+  const { looksEnglish } = await import('../../site/js/translate.js');
+  assert.equal(looksEnglish('this is how your reels go viral and my friend'), true);
+  assert.equal(looksEnglish('Names de dhosto, Arnmehapko ka batane malafu'), false);
+});

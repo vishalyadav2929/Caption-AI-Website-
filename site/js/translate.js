@@ -27,6 +27,14 @@ export function detectTextLang(text, hint) {
   return top;
 }
 
+// Small models sometimes write Hindi speech as rough Roman letters ("namaste dosto") rather than
+// English. Only real English (lots of common English words) should be auto-translated.
+const EN_WORDS = new Set('the a an and or to of in on is are was were i you he she it we they this that my your for with be have do not will at so but what all can just'.split(' '));
+export function looksEnglish(text) {
+  const w = String(text).toLowerCase().match(/[a-z']+/g) || [];
+  return w.length > 0 && w.filter(x => EN_WORDS.has(x)).length / w.length >= 0.15;
+}
+
 /** Split text into pieces the service accepts (its limit is 500 bytes), breaking between words. */
 export function splitForService(text, maxBytes = 450) {
   const enc = new TextEncoder();

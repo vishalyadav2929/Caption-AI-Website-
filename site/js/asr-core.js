@@ -14,15 +14,21 @@ function rms(audio, from, to) {
   return Math.sqrt(s / Math.max(1, to - from));
 }
 
-/** Window boundaries in samples: [{ start, end }]. */
-export function planWindows(audio, { sr = SR, maxLen = 29, minLen = 18 } = {}) {
+/**
+ * Window boundaries in samples: [{ start, end }].
+ * With `firstMax`, the first window is kept short (cut at a pause between firstMax/2 and firstMax s)
+ * so the first captions appear sooner on long videos.
+ */
+export function planWindows(audio, { sr = SR, maxLen = 29, minLen = 18, firstMax = 0 } = {}) {
   const out = [];
   const frame = Math.floor(sr * 0.1);
   let start = 0;
   while (start < audio.length) {
-    if (audio.length - start <= maxLen * sr) { out.push({ start, end: audio.length }); break; }
-    let best = start + maxLen * sr, bestE = Infinity;
-    for (let p = start + minLen * sr; p + frame <= start + maxLen * sr; p += frame) {
+    const first = !out.length && firstMax && audio.length > (firstMax + 8) * sr;
+    const hi = first ? firstMax : maxLen, lo = first ? firstMax / 2 : minLen;
+    if (audio.length - start <= hi * sr) { out.push({ start, end: audio.length }); break; }
+    let best = start + hi * sr, bestE = Infinity;
+    for (let p = start + lo * sr; p + frame <= start + hi * sr; p += frame) {
       const e = rms(audio, p, p + frame);
       if (e < bestE) { bestE = e; best = p + Math.floor(frame / 2); }
     }
@@ -64,8 +70,8 @@ export function chunksToWords(chunks, level, offset, windowEnd) {
  * run(subarray) → Promise<{ chunks, level: 'word' | 'segment' }>
  * hooks: { onProgress(done, total), shouldStop() }
  */
-export async function transcribeLong(run, audio, { sr = SR, onProgress, shouldStop } = {}) {
-  const windows = planWindows(audio, { sr });
+export async function transcribeLong(run, audio, { sr = SR, onProgress, onWords, shouldStop, firstMax = 0 } = {}) {
+  const windows = planWindows(audio, { sr, firstMax });
   const words = [];
   let level = 'word';
   for (let i = 0; i < windows.length; i++) {
@@ -74,11 +80,71 @@ export async function transcribeLong(run, audio, { sr = SR, onProgress, shouldSt
     if (!isSilent(audio, start, end)) {
       const out = await run(audio.subarray(start, end));
       if (out.level === 'segment') level = 'segment';
-      words.push(...chunksToWords(out.chunks, out.level, start / sr, end / sr));
+      const got = chunksToWords(out.chunks, out.level, start / sr, end / sr);
+      words.push(...got);
+      if (onWords && got.length) onWords(got, i, windows.length);
     }
     onProgress && onProgress(i + 1, windows.length);
   }
   return { words, level, windows: windows.length };
+}
+
+// ---------- keep captions on the voice ----------
+
+/** Per-frame loudness and a speech/silence threshold that adapts to the background noise. */
+function voiceMap(audio, sr) {
+  const hop = Math.max(1, Math.floor(sr * 0.02));
+  const n = Math.floor(audio.length / hop);
+  const lv = new Float32Array(n);
+  for (let f = 0; f < n; f++) lv[f] = rms(audio, f * hop, (f + 1) * hop);
+  const sorted = Float32Array.from(lv).sort();
+  const floor = sorted[Math.floor(n * 0.1)] || 0, peak = sorted[Math.floor(n * 0.95)] || 0;
+  const thr = Math.max(floor * 2.5, floor + (peak - floor) * 0.1, 1e-4);
+  return { hop, n, voiced: f => f >= 0 && f < n && lv[f] > thr };
+}
+
+/**
+ * Whisper often starts a phrase's first word at the beginning of a pause (or the window), so the
+ * caption shows up before anyone speaks. Move word edges that sit in silence onto the voice.
+ * Estimated (sentence-level) words are re-spread over the voiced parts of their sentence, by length.
+ */
+export function snapToSpeech(words, audio, { sr = SR, lead = 0.05, tail = 0.12 } = {}) {
+  if (!words.length || !audio.length) return words;
+  const { hop, n, voiced } = voiceMap(audio, sr);
+  const fr = t => Math.min(n, Math.max(0, Math.round(t * sr / hop)));
+  const sec = f => f * hop / sr;
+  const out = words.map(w => ({ ...w }));
+  for (let i = 0; i < out.length; i++) {
+    const w = out[i];
+    if (w.approx) {
+      // A run of estimated words from one sentence: spread them over its voiced frames.
+      let j = i; while (j + 1 < out.length && out[j + 1].approx && Math.abs(out[j + 1].start - out[j].end) < 1e-3) j++;
+      const a = fr(out[i].start), b = fr(out[j].end);
+      const vf = []; for (let f = a; f < b; f++) if (voiced(f)) vf.push(f);
+      if (vf.length >= (j - i + 1) * 2) {
+        const lens = out.slice(i, j + 1).map(x => x.text.length + 1), total = lens.reduce((x, y) => x + y, 0);
+        let acc = 0;
+        for (let k = i; k <= j; k++) {
+          const f0 = vf[Math.floor(acc / total * vf.length)];
+          acc += lens[k - i];
+          const f1 = vf[Math.min(vf.length - 1, Math.ceil(acc / total * vf.length) - 1)];
+          out[k].start = +sec(f0).toFixed(3); out[k].end = +sec(f1 + 1).toFixed(3);
+        }
+      }
+      i = j;
+      continue;
+    }
+    const a = fr(w.start), b = fr(w.end);
+    if (b - a < 2) continue;
+    let f = a; while (f < b && !voiced(f)) f++;
+    if (f < b && f > a) w.start = +Math.max(w.start, sec(f) - lead).toFixed(3);
+    let g = b - 1; while (g > f && !voiced(g)) g--;
+    if (g > f && g < b - 1) w.end = +Math.min(w.end, sec(g + 1) + tail).toFixed(3);
+    if (w.end - w.start < 0.08) w.end = +(w.start + 0.08).toFixed(3);
+  }
+  // Keep order: never start before the previous word ends.
+  for (let i = 1; i < out.length; i++) if (out[i].start < out[i - 1].end && out[i].start >= out[i - 1].start) out[i - 1].end = Math.max(out[i - 1].start + 0.05, out[i].start);
+  return out;
 }
 
 // ---------- clean-up for noisy, real-world audio ----------
