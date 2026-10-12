@@ -32,20 +32,21 @@
     <div class="tabs" id="tabs" aria-label="Filter styles"></div>
     <div class="grid-head">Every template · <span id="tplCount"></span></div>
     <div class="grid" id="grid"></div>
-    <footer>Free forever, no sign-up. <a href="app.html">Open the editor →</a></footer>
+    <footer>Free forever, no sign-up. <a href="app.html">Open the editor →</a> · <a href="privacy.html">Privacy</a></footer>
   </main>
 
   <script type="module">
     import { FONTS_URL, loadTemplateFonts } from './js/templates.js';
     import { mountGallery } from './js/gallery.js';
     document.getElementById('fonts').href = FONTS_URL;
-    loadTemplateFonts().finally(() => mountGallery({
+    loadTemplateFonts(); // fonts swap in as they load; previews redraw every frame
+    mountGallery({
       tabsEl: document.getElementById('tabs'),
       gridEl: document.getElementById('grid'),
       langEl: document.getElementById('langTabs'),
       countEl: document.getElementById('tplCount'),
       onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
-    }));
+    });
   </script>
 </body>
 </html>

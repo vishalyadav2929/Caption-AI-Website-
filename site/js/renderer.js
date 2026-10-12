@@ -274,9 +274,9 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
 
   const px = tpl.size * Math.min(W, H) * 1.6 * (opts.scale || 1);
   const pos = opts.pos ?? tpl.pos ?? 0.72;
-  const cy = clamp(pos, 0.08, 0.95) * H;
+  let cy = clamp(pos, 0.06, 0.95) * H;
   const hasIndic = chunk.words.some(w => INDIC.test(w.text));
-  const maxW = W * 0.88;
+  const maxW = W * clamp(tpl.maxWidth ?? 0.88, 0.3, 0.96);
 
   // Group entry animation.
   const e = clamp((t - chunk.start) / 0.22);
@@ -355,11 +355,14 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   });
   const blockW = Math.max(...lines.map(l => l.width));
   const blockH = lines.reduce((a, l) => a + l.h, 0);
+  // Keep the whole block inside the frame, whatever the position setting.
+  const margin = H * 0.04 + px * 0.2;
+  cy = Math.min(Math.max(cy, margin + blockH / 2), H - margin - blockH / 2);
   let y = cy - blockH / 2;
   const left = W / 2 - blockW / 2;
   lines.forEach((l, li) => {
     const shift = tpl.stagger ? (li % 2 ? 1 : -1) * px * tpl.stagger : 0;
-    let x = (tpl.align === 'left' ? left : W / 2 - l.width / 2) + shift;
+    let x = (tpl.align === 'left' ? left : tpl.align === 'right' ? left + blockW - l.width : W / 2 - l.width / 2) + shift;
     l.y = y + l.h / 2;
     l.items.forEach(it => { it.x = x + it.width / 2; it.y = l.y; x += it.width + space; });
     y += l.h;

@@ -165,6 +165,8 @@ export const TEMPLATES = [
     roles: [small(0.6), small(0.6), small(0.6), small(0.6), { size: 1.25, title: true, color: '#2EE04A', extrude: { c: '#0A5A12', d: 0.06 } }] },
 
   // ---- More styles ----
+  { id: 'high-contrast', name: 'High Contrast', tags: ['minimal'], font: 'Inter', weight: 800, size: 0.05,
+    color: '#FFFF00', hi: 'none', anim: 'none', words: 6, pos: 0.82, bg: { c: 'rgba(0,0,0,.92)', pad: 0.32, r: 0.08 } },
   { id: 'viral-pop', name: 'Viral Pop', tags: ['viral', 'insta'], font: 'Montserrat', weight: 900, size: 0.068, upper: true,
     color: '#ffffff', hiColor: '#FFE600', hi: 'scale', stroke: { w: 0.14, c: '#000000' }, anim: 'pop', words: 3 },
   { id: 'neon-box', name: 'Neon Box', tags: ['viral', 'insta'], font: 'Montserrat', weight: 800, size: 0.062, upper: true,

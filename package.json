@@ -1,0 +1,13 @@
+{
+  "name": "viral-caption-zone",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Free in-browser video caption editor. Static site, no build step.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080 --directory site",
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:e2e": "node tests/e2e/run.mjs"
+  },
+  "license": "UNLICENSED"
+}

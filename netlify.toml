@@ -1,8 +1,22 @@
+# ViralCaptionZone is a static site: no build step, no server, no environment variables.
 [build]
-  publish = "."
+  publish = "site"
+  command = "echo 'Static site, nothing to build'"
 
 [[headers]]
   for = "/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    # Camera and microphone are only used by Live captions, on this site itself.
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
+
+# Code changes ship immediately; browsers re-check JS/CSS on each visit.
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
