@@ -1,4 +1,4 @@
-# Caption AI
+# ViralCaptionZone
 
 A free website for adding viral, animated captions to Reels, Shorts and Pins.
 

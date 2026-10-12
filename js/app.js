@@ -388,7 +388,7 @@ $('recBtn').onclick = () => {
   if (!window.MediaRecorder) return toast('Recording isn’t supported in this browser.');
   const stream = canvas.captureStream(30);
   cam.getAudioTracks().forEach(t => stream.addTrack(t));
-  startRecorder(stream, 'caption-ai-live', () => {
+  startRecorder(stream, 'viralcaptionzone-live', () => {
     $('recBtn').textContent = '● Record';
     $('liveTime').textContent = '';
     toast('Recording saved to your downloads.');
