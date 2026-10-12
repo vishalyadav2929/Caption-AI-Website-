@@ -99,13 +99,22 @@ await step('sample caption shows the template on the video before captions exist
 });
 
 await step('real-time audio fallback (used when a browser can’t decode the file) reads the full track', async () => {
-  await page.evaluate(() => { window.__vczForceRealtime = true; window.__vczAudioLength = 0; });
+  await page.evaluate(() => { window.__vczForceRealtime = true; window.__vczAudioLength = 0; window.__vczKeepAudio = true; });
   await page.evaluate(() => { document.getElementById('moreOpts').open = true; });
   await page.click('#genBtn');
   await page.waitForFunction(() => /Couldn’t generate captions/.test(document.getElementById('status').textContent) && window.__vczAudioLength > 0, null, { timeout: 60000 });
   const len = await vcz(() => window.__vczAudioLength);
   assert.ok(Math.abs(len / 16000 - 6) < 0.6, `captured ${len / 16000}s`);
-  await page.evaluate(() => { window.__vczForceRealtime = false; });
+  // Captured faster than real time, but the 440 Hz test tone must come back at 440 Hz (no chipmunk voice).
+  const hz = await page.evaluate(() => {
+    const a = window.__vczAudio; let z = 0;
+    const from = 16000, to = Math.min(a.length, 16000 * 4);
+    for (let i = from + 1; i < to; i++) if (a[i - 1] <= 0 && a[i] > 0) z++;
+    return z / ((to - from) / 16000);
+  });
+  assert.ok(Math.abs(hz - 440) < 15, `pitch ${hz.toFixed(1)} Hz`);
+  console.log('   fast capture pitch', hz.toFixed(1), 'Hz');
+  await page.evaluate(() => { window.__vczForceRealtime = false; window.__vczKeepAudio = false; });
 });
 
 await step('editor shows an empty-state message', async () => {
