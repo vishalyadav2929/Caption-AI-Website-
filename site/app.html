@@ -52,7 +52,7 @@
         <select id="startModel">
           <option value="fast">Fast · ~40 MB one-time download</option>
           <option value="balanced" selected>Balanced · ~80 MB (recommended)</option>
-          <option value="best">Best for Hindi · ~250 MB, slower, desktop only</option>
+          <option value="best">Best for Hindi · 250–400 MB, slower, computers only</option>
         </select>
       </details>
       <button class="start-go" id="startGo" disabled><i id="startBar"></i><span id="startGoText">Upload Video First</span></button>
@@ -90,6 +90,10 @@
             or click to choose · MP4, MOV, WEBM
           </div>
         </label>
+        <div class="size-ctl" aria-label="Caption size">
+          <button type="button" id="szDown" aria-label="Smaller captions">A−</button>
+          <button type="button" id="szUp" aria-label="Bigger captions">A+</button>
+        </div>
         <div class="gen-ov" id="genOv" role="status" aria-live="polite" hidden>
           <div class="gen-ov-card">
             <span class="spin" aria-hidden="true"></span>
@@ -116,6 +120,7 @@
         <button class="btn btn-sm icon-btn" id="fsBtn" title="Full screen" aria-label="Full screen">⛶</button>
         <label class="btn btn-sm" for="fileIn">Replace</label>
       </div>
+      <p class="drag-hint">Drag the captions on the video to move them up or down</p>
       <p class="meta" id="meta"></p>
       <div class="m-tpl" id="mTpl" aria-label="Templates"></div>
       <div class="transport" id="liveControls" hidden>
@@ -136,6 +141,7 @@
         <div class="panel-h sub-h">
           <span>Captions <small id="segCount"></small></span>
           <span class="row" style="gap:6px;flex:0 0 auto">
+            <button class="btn btn-sm" id="trOpen">Translate</button>
             <button class="btn btn-sm" id="addSeg">+ Add</button>
             <label class="btn btn-sm" for="srtIn">Import SRT</label>
           </span>
@@ -155,7 +161,7 @@
               <select id="model">
                 <option value="fast">Fast · ~40 MB</option>
                 <option value="balanced" selected>Balanced · ~80 MB</option>
-                <option value="best">Best for Hindi · ~250 MB</option>
+                <option value="best">Best for Hindi · 250–400 MB</option>
               </select>
             </div>
             <label class="check field"><input type="checkbox" id="translate"> Translate captions to English</label>
@@ -165,6 +171,12 @@
             </div>
             <p class="hint">Replaces the current captions. The speech model downloads once, then is cached.</p>
           </div>
+          <h3 class="more-h" id="trHead">Translate captions</h3>
+          <div class="row field tr-row">
+            <select id="trTarget" aria-label="Translate captions to"></select>
+            <button class="btn btn-primary" id="trBtn">Translate</button>
+          </div>
+          <p class="hint" id="trNote"></p>
           <h3 class="more-h">Caption text</h3>
         <label class="check field"><input type="checkbox" id="hinglish"> Show Hindi as Hinglish (Roman)</label>
         <div class="row field">

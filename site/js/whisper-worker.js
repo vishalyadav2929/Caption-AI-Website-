@@ -2,7 +2,7 @@
 // Nothing is uploaded: the model is downloaded once from the Hugging Face hub, cached by the
 // browser, and run on this device (WebGPU when available, otherwise WebAssembly).
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
-import { transcribeLong } from './asr-core.js';
+import { transcribeLong, preprocess, cleanWords } from './asr-core.js';
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -71,10 +71,13 @@ async function transcribe({ audio, quality, language, task }) {
       const out = await run(sub, { ...base, return_timestamps: true });
       return { chunks: out.chunks, level: 'segment' };
     };
+    post({ type: 'status', text: 'Cleaning up background noise…' });
+    const clean = preprocess(audio);
     post({ type: 'status', text: 'Listening to your video…' });
-    const res = await transcribeLong(runWindow, audio, {
+    const res = await transcribeLong(runWindow, clean, {
       onProgress: (done, total) => post({ type: 'transcribe', done, total }),
     });
+    res.words = cleanWords(res.words);
     post({ type: 'done', ...res });
   }
 }

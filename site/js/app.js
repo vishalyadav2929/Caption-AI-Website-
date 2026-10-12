@@ -399,7 +399,39 @@ $('playBtn').onclick = togglePlay;
 video.onplay = () => { $('playBtn').textContent = '❚❚ Pause'; $('playBtn').setAttribute('aria-label', 'Pause'); };
 video.onpause = () => { $('playBtn').textContent = '▶ Play'; $('playBtn').setAttribute('aria-label', 'Play'); };
 $('seek').oninput = e => { if (isFinite(video.duration)) video.currentTime = e.target.value / 1000 * video.duration; };
-canvas.addEventListener('click', togglePlay);
+// Drag captions up/down on the video; a tap without dragging plays/pauses.
+{
+  let drag = null;
+  canvas.addEventListener('pointerdown', e => {
+    if (S.exporting || S.mode !== 'file') return;
+    drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false };
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y0;
+    if (!drag.moved && Math.abs(dy) < 6) return;
+    drag.moved = true;
+    canvas.classList.add('dragging');
+    const h = canvas.getBoundingClientRect().height || 1;
+    S.o.pos = Math.min(0.95, Math.max(0.06, drag.pos0 + dy / h));
+    $('pos').value = Math.round(S.o.pos * 100); $('posVal').textContent = `${$('pos').value}%`;
+  });
+  const end = () => {
+    if (!drag) return;
+    canvas.classList.remove('dragging');
+    if (drag.moved) commit(); else togglePlay();
+    drag = null;
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', () => { if (drag) { canvas.classList.remove('dragging'); drag = null; } });
+}
+const nudgeSize = d => {
+  S.o.scale = Math.min(2.5, Math.max(0.4, Math.round(((S.o.scale || 1) + d) * 100) / 100));
+  syncControls(); commit();
+};
+$('szDown').onclick = () => nudgeSize(-0.1);
+$('szUp').onclick = () => nudgeSize(0.1);
 $('fsBtn').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else if (box.requestFullscreen) box.requestFullscreen().catch(() => toast('Full screen isn’t available here.'));
@@ -554,6 +586,7 @@ function cancelTranscribe() {
 function applyTranscript(res, captionMode) {
   if (!res.words.length) return false;
   S.hinglish = captionMode === 'hinglish';
+  S.textLang = captionMode === 'english' ? 'en' : (S.genLang && S.genLang.bcp ? S.genLang.bcp.split('-')[0] : null);
   S.segments = C.segmentsFromWords(res.words, wordsPerCaption(), 32);
   S.selected = -1;
   syncControls(); renderSegs(); syncActions(); commit();
@@ -579,6 +612,7 @@ async function runGeneration({ lang, mode, quality }) {
   genRunning = true;
   const task = mode === 'english' && lang.whisper !== 'english' ? 'translate' : 'transcribe';
   S.pendingMode = mode;
+  S.genLang = lang.whisper ? lang : null;
   genUI(true); syncActions(); renderSegs(); status('');
   $('genOv').classList.remove('wait');
   $('genOvBar').style.width = '0';
@@ -960,6 +994,73 @@ async function exportVideo({ kind = 'video', size } = {}) {
 }
 $('exportCancel').onclick = () => { if (exportJob) { exportJob.cancelled = true; exportJob.finish && exportJob.finish(); } };
 
+// ---------- translation ----------
+// Chrome (desktop, 138+) has a free on-device translator. Elsewhere, English is still possible by
+// re-running Whisper in translate mode; other targets need Chrome.
+const hasTranslator = () => 'Translator' in self;
+LANGUAGES.forEach((l, i) => {
+  if (!l.whisper && !l.hinglish) return;
+  const o = document.createElement('option');
+  o.value = i; o.textContent = l.name;
+  $('trTarget').appendChild(o);
+});
+$('trTarget').value = String(LANGUAGES.findIndex(l => l.whisper === 'english'));
+$('trNote').textContent = hasTranslator()
+  ? 'Translates on your device with Chrome’s built-in translator (a small one-time download per language). Timing is kept; word highlights inside each caption become estimated.'
+  : 'This browser has no built-in translator, so only English is available here (it re-runs the speech model). For other languages, open the site in Chrome on a computer.';
+$('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+
+function sourceLangCode() {
+  if (S.textLang) return S.textLang;
+  const l = LANGUAGES[$('lang').value];
+  return l && l.whisper ? l.bcp.split('-')[0] : null;
+}
+$('trBtn').onclick = async () => {
+  const target = LANGUAGES[$('trTarget').value];
+  const tgt = target.bcp.split('-')[0];
+  if (!S.segments.length) return toast('There are no captions to translate yet.');
+  const src = sourceLangCode();
+  if (src === tgt) {
+    if (target.hinglish !== S.hinglish) { S.hinglish = !!target.hinglish; syncControls(); renderSegs(); commit(); }
+    return toast(target.hinglish ? 'Showing Hindi as Hinglish.' : 'Captions are already in that language.');
+  }
+  if (!hasTranslator()) {
+    if (tgt === 'en' && S.file && S.genLang) {
+      if (!confirm('Translate to English by re-running the speech model? Your caption edits will be replaced.')) return;
+      return runGeneration({ lang: S.genLang, mode: 'english', quality: $('model').value });
+    }
+    return toast('Translating to that language needs Chrome on a computer. English works here.', 6000);
+  }
+  if (!src) return toast('Pick the language the captions are in under “Generate again → Audio language” first.');
+  const btn = $('trBtn');
+  btn.disabled = true;
+  try {
+    const avail = await self.Translator.availability({ sourceLanguage: src, targetLanguage: tgt });
+    if (avail === 'unavailable') throw new Error(`Chrome can’t translate ${src} → ${tgt} yet.`);
+    status('Preparing translator…');
+    const tr = await self.Translator.create({
+      sourceLanguage: src, targetLanguage: tgt,
+      monitor(m) { m.addEventListener('downloadprogress', e => status(`Downloading translator… ${Math.round((e.loaded || 0) * 100)}%`, (e.loaded || 0) * 100)); },
+    });
+    const groups = C.sentenceGroups(S.segments);
+    const next = [];
+    for (let g = 0; g < groups.length; g++) {
+      status(`Translating… ${g + 1} of ${groups.length}`, (g / groups.length) * 100);
+      const text = groups[g].map(i => C.segmentText(S.segments[i])).join(' ');
+      next.push(...C.applyTranslation(S.segments, groups[g], await tr.translate(text)));
+    }
+    S.textLang = tgt;
+    S.hinglish = !!target.hinglish;
+    setSegments(next);
+    syncControls();
+    status(`Translated to ${target.name.split(' — ')[0]}. Press Undo to go back.`);
+  } catch (err) {
+    status(`Translation failed: ${err.message || err}`);
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 // ---------- SRT ----------
 $('srtBtn').onclick = () => {
   download(new Blob([C.toSRT(S.segments, transform)], { type: 'text/plain' }), `${S.file ? S.file.name.replace(/\.[^.]+$/, '') : 'captions'}.srt`);
@@ -1142,6 +1243,9 @@ const captionCombo = combo($('captionCombo'), 'Select a language', 'Search capti
 const spokenCombo = combo($('spokenCombo'), 'Select a language', 'Search spoken language…', it => {
   start.spoken = it;
   const l = it && it.lang;
+  // Hindi is where the small model clearly beats base. Suggest it on computers (phones keep Balanced to save memory).
+  const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+  if (l && !isPhone) $('startModel').value = l.whisper === 'hindi' ? 'best' : 'balanced';
   const own = l ? l.name.split(' — ')[0].replace(/ \(.*\)/, '') : '';
   const opts = !l ? [] : l.whisper === 'hindi'
     ? [{ id: 'native', label: 'Hindi' }, { id: 'hinglish', label: 'Hinglish (Roman Hindi)' }, { id: 'english', label: 'English' }]

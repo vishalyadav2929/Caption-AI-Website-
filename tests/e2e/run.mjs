@@ -307,6 +307,60 @@ await step('iPhone-style audio lock: shows “Tap to start captions”, and a ta
   await ctx.close();
 });
 
+await step('drag the captions up/down on the video; A−/A+ change size', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForTimeout(400);
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  const box = await m.locator('#stage').boundingBox();
+  const before = await m.evaluate(() => window.__vcz.tpl().pos ?? 0.72);
+  await m.mouse.move(box.x + box.width / 2, box.y + box.height * 0.5);
+  await m.mouse.down();
+  await m.mouse.move(box.x + box.width / 2, box.y + box.height * 0.3, { steps: 6 });
+  await m.mouse.up();
+  const after = await m.evaluate(() => window.__vcz.S.o.pos);
+  assert.ok(after < before - 0.15, `position moved up: ${before} → ${after}`);
+  assert.equal(await m.evaluate(() => document.querySelector('video').paused), true, 'dragging must not start playback');
+  await m.click('#szUp'); await m.click('#szUp');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.scale), 1.2);
+  await m.click('#szDown');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.scale), 1.1);
+  await ctx.close();
+});
+
+await step('translate captions with the browser translator (mocked) keeps the timing', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.addInitScript(() => {
+    self.Translator = {
+      availability: async () => 'available',
+      create: async ({ sourceLanguage, targetLanguage }) => ({ translate: async t => `[${sourceLanguage}>${targetLanguage}] ` + t.toUpperCase() }),
+    };
+  });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForTimeout(300);
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.evaluate(() => { document.getElementById('lang').value = '3'; }); // English (US) as caption language
+  const before = await m.evaluate(() => window.__vcz.S.segments.map(s => [s.start, s.end]));
+  await m.click('#trOpen');
+  await m.selectOption('#trTarget', { label: 'Spanish — Español' });
+  await m.click('#trBtn');
+  await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
+  const text = await m.evaluate(() => window.__vcz.S.segments.map(s => s.words.map(w => w.text).join(' ')).join(' | '));
+  assert.match(text, /\[en>es\]/);
+  assert.match(text.replace(/ \| /g, ' '), /THIS IS HOW YOUR/);
+  const span = await m.evaluate(() => [window.__vcz.S.segments[0].start, window.__vcz.S.segments.at(-1).end]);
+  assert.deepEqual(span, [before[0][0], before.at(-1)[1]], 'overall timing kept');
+  await m.click('#undoBtn');
+  assert.doesNotMatch(await m.evaluate(() => window.__vcz.S.segments.map(s => s.words.map(w => w.text).join(' ')).join(' ')), /\[en>es\]/);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

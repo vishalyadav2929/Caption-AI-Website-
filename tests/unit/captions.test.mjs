@@ -111,3 +111,18 @@ test('indexAt finds the caption that has started', () => {
   assert.equal(C.indexAt(segs, 0.9), 1);
   assert.equal(C.indexAt(segs, 10), 3);
 });
+
+test('sentenceGroups splits on sentence ends and pauses', () => {
+  const segs = C.segmentsFromWords(words, 3);
+  assert.deepEqual(C.sentenceGroups(segs), [[0, 1, 2], [3]]);
+});
+
+test('applyTranslation shares translated words across the original captions and keeps their time span', () => {
+  const segs = C.segmentsFromWords(words, 3); // 'this is how' | 'your reels go' | 'viral.'
+  const out = C.applyTranslation(segs, [0, 1, 2], 'aise aapki reels har baar viral hongi');
+  assert.equal(out.length, 3);
+  assert.equal(out.flatMap(s => s.words.map(w => w.text)).join(' '), 'aise aapki reels har baar viral hongi');
+  out.forEach((s, j) => { assert.equal(s.start, segs[j].start); assert.equal(s.end, segs[j].end); assert.equal(s.approx, true); });
+  // Shorter translation than captions: no empty captions.
+  assert.ok(C.applyTranslation(segs, [0, 1, 2], 'hello').every(s => s.words.length));
+});
