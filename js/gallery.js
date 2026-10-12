@@ -1,12 +1,12 @@
-import { TEMPLATES, TAGS } from './templates.js';
+import { TEMPLATES, TAGS, SAMPLES } from './templates.js';
 import { buildChunks, findChunk, drawCaption, spreadWords } from './renderer.js';
 
-const SAMPLE_EN = 'this is how your reels go viral every single time';
-const SAMPLE_HI = 'ऐसे होगी आपकी रील हर बार वायरल';
 const LOOP = 4.2;
 
-function sampleChunks(tpl) {
-  const words = spreadWords(tpl.tags.includes('hindi') ? SAMPLE_HI : SAMPLE_EN, 0.1, LOOP - 0.3);
+function sampleChunks(tpl, lang = 'en') {
+  // Devanagari-first styles preview in Hindi unless another script is picked.
+  const id = lang === 'en' && tpl.tags.includes('hindi') ? 'hi' : lang;
+  const words = spreadWords(SAMPLES.find(l => l.id === id).text, 0.1, LOOP - 0.3);
   return buildChunks(words, Math.min(tpl.words, 3), 22);
 }
 
@@ -25,9 +25,9 @@ function paintBg(ctx, W, H, hue, t) {
 
 /**
  * Mounts a filterable template grid.
- * opts: { tabsEl, gridEl, selected, onSelect }
+ * opts: { tabsEl, gridEl, langEl?, selected, onSelect }
  */
-export function mountGallery({ tabsEl, gridEl, selected, onSelect }) {
+export function mountGallery({ tabsEl, gridEl, langEl, selected, onSelect }) {
   let filter = 'all';
   let current = selected;
   const tiles = [];
@@ -44,6 +44,20 @@ export function mountGallery({ tabsEl, gridEl, selected, onSelect }) {
     };
     tabsEl.appendChild(b);
   });
+
+  if (langEl) {
+    langEl.innerHTML = '';
+    SAMPLES.forEach((l, i) => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (i === 0 ? ' on' : '');
+      b.textContent = l.name;
+      b.onclick = () => {
+        langEl.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+        tiles.forEach(tile => { tile.chunks = sampleChunks(tile.tpl, l.id); });
+      };
+      langEl.appendChild(b);
+    });
+  }
 
   gridEl.innerHTML = '';
   TEMPLATES.forEach((tpl, i) => {

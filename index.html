@@ -41,6 +41,7 @@
   <section class="section wrap" id="templates">
     <h2>Caption templates</h2>
     <p class="sub">Bold viral pop, karaoke highlights, aesthetic Pinterest serifs and Devanagari styles built for Hindi. Click any style to open it in the editor.</p>
+    <div class="tabs" id="langTabs" aria-label="Preview language"></div>
     <div class="tabs" id="tabs"></div>
     <div class="grid" id="grid"></div>
   </section>
@@ -103,6 +104,7 @@
       mountGallery({
         tabsEl: document.getElementById('tabs'),
         gridEl: document.getElementById('grid'),
+        langEl: document.getElementById('langTabs'),
         onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
       });
     });

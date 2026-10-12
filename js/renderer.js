@@ -79,27 +79,48 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   if ('letterSpacing' in ctx) ctx.letterSpacing = `${(tpl.spacing || 0) * px}px`;
   const space = Math.max(ctx.measureText(' ').width, px * 0.26) + (tpl.spacing || 0) * px;
 
-  // Word-wrap.
-  const items = chunk.words.map(w => {
+  // Per-word sizing. Templates with `emph` blow up the key (longest) word and shrink the rest.
+  const em = tpl.emph;
+  let key = -1;
+  if (em) chunk.words.forEach((w, i) => { if (key < 0 || w.text.length > chunk.words[key].text.length) key = i; });
+  const items = chunk.words.map((w, i) => {
     const text = displayText(w.text, tpl);
-    return { w, text, width: ctx.measureText(text).width };
+    const isKey = i === key;
+    const ipx = em ? px * (isKey ? em.scale : (em.small || 1)) : px;
+    const font = em
+      ? fontString({ ...tpl, weight: isKey ? (em.weight ?? tpl.weight) : tpl.weight, italic: isKey ? !!em.italic : !!em.otherItalic }, ipx)
+      : ctx.font;
+    ctx.font = font;
+    let width = ctx.measureText(text).width;
+    // A single word wider than the frame (long Tamil/Malayalam words, big emphasis) is shrunk to fit.
+    if (width > maxW) {
+      const k = maxW / width;
+      return { w, text, width: maxW, px: ipx * k, font: font.replace(/(\d+)px/, (_, n) => `${Math.round(n * k)}px`), isKey };
+    }
+    return { w, text, width, px: ipx, font, isKey };
   });
+
+  // Word-wrap (or one word per line for stacked styles).
+  const stack = tpl.layout === 'stack';
   const lines = [];
   let line = [], lw = 0;
   for (const it of items) {
     const add = (line.length ? space : 0) + it.width;
-    if (line.length && lw + add > maxW) { lines.push({ items: line, width: lw }); line = []; lw = 0; }
+    if (line.length && (stack || lw + add > maxW)) { lines.push({ items: line, width: lw }); line = []; lw = 0; }
     lw += (line.length ? space : 0) + it.width; line.push(it);
   }
   if (line.length) lines.push({ items: line, width: lw });
+  const lineFactor = stack ? (hasIndic ? 1.2 : 0.92) : lineH / px;
+  lines.forEach(l => { l.h = Math.max(...l.items.map(it => it.px)) * lineFactor; });
 
-  const blockH = lines.length * lineH;
+  const blockH = lines.reduce((a, l) => a + l.h, 0);
   const cy = clamp(pos, 0.08, 0.95) * H;
-  let y = cy - blockH / 2 + lineH / 2;
+  let y = cy - blockH / 2;
   lines.forEach(l => {
     let x = W / 2 - l.width / 2;
-    l.items.forEach(it => { it.x = x + it.width / 2; it.y = y; x += it.width + space; });
-    l.y = y; y += lineH;
+    const ly = y + l.h / 2;
+    l.items.forEach(it => { it.x = x + it.width / 2; it.y = ly; x += it.width + space; });
+    l.y = ly; y += l.h;
   });
 
   // Entry animation for the whole group.
@@ -129,7 +150,7 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
       const vis = typeMode ? l.items.filter(it => chunk.words.indexOf(it.w) <= active) : l.items;
       if (!vis.length) return;
       const left = vis[0].x - vis[0].width / 2, right = vis[vis.length - 1].x + vis[vis.length - 1].width / 2;
-      roundRect(ctx, left - pad, l.y - lineH / 2 - pad * 0.3 + lineH * 0.06, right - left + pad * 2, lineH + pad * 0.6 - lineH * 0.12, tpl.bg.r * px);
+      roundRect(ctx, left - pad, l.y - l.h / 2 - pad * 0.3 + l.h * 0.06, right - left + pad * 2, l.h + pad * 0.6 - l.h * 0.12, tpl.bg.r * px);
       ctx.fill();
     });
   }
@@ -144,8 +165,10 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
     if (tpl.hi === 'scale' && isActive) s = 1 + 0.14 * easeOutBack(clamp((t - it.w.start) / 0.15));
     ctx.translate(it.x, it.y);
     ctx.scale(s, s);
+    ctx.font = it.font;
+    const px = it.px;
 
-    let fill = tpl.color;
+    let fill = it.isKey && em.gradient ? em.gradient : tpl.color;
     if (tpl.hi === 'box' && isActive) {
       const p = easeOutBack(clamp((t - it.w.start) / 0.12));
       const padX = px * 0.16, padY = px * 0.08, bh = px * (hasIndic ? 1.35 : 1.12);
@@ -164,7 +187,7 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
     const dimmed = tpl.dim && tpl.hi === 'karaoke' && !isPast && !isActive;
     if (dimmed) ctx.globalAlpha *= tpl.dim;
 
-    drawWord(ctx, it.text, fill, tpl, px, tpl.hi === 'box' && isActive);
+    drawWord(ctx, it.text, fill, tpl, px, tpl.hi === 'box' && isActive, it.isKey && em.glow);
 
     if (tpl.hi === 'karaoke' && isActive) {
       const dur = Math.max(0.05, it.w.end - it.w.start);
@@ -180,7 +203,19 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   ctx.restore();
 }
 
-function drawWord(ctx, text, fill, tpl, px, onBox) {
+function drawWord(ctx, text, fill, tpl, px, onBox, glow) {
+  // An array fill is a top-to-bottom gradient, e.g. gold → orange.
+  if (Array.isArray(fill)) {
+    const g = ctx.createLinearGradient(0, -px * 0.45, 0, px * 0.45);
+    fill.forEach((c, i) => g.addColorStop(i / (fill.length - 1), c));
+    fill = g;
+  }
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = px * 0.4;
+    ctx.fillStyle = fill;
+    ctx.fillText(text, 0, 0);
+  }
   if (tpl.shadow) {
     ctx.shadowColor = tpl.shadow.c;
     ctx.shadowBlur = tpl.shadow.b * px;

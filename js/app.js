@@ -85,7 +85,7 @@ function toHex(c) {
   x.fillStyle = c; return /^#/.test(x.fillStyle) ? x.fillStyle : '#ffffff';
 }
 const gallery = mountGallery({
-  tabsEl: $('tabs'), gridEl: $('grid'), selected: S.tpl.id,
+  tabsEl: $('tabs'), gridEl: $('grid'), langEl: $('langTabs'), selected: S.tpl.id,
   onSelect: t => {
     S.tpl = t;
     Object.assign(S.o, { words: null, color: null, hiColor: null, upper: null });

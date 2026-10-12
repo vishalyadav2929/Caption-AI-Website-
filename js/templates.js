@@ -3,6 +3,11 @@
 // anim: how a caption group enters — pop | bounce | slide | fade | type | none
 
 export const TEMPLATES = [
+  { id: 'classic', name: 'Classic', tags: ['minimal'], font: 'Lato', weight: 700, size: 0.052, lower: true,
+    color: '#ffffff', hi: 'none', shadow: { c: 'rgba(0,0,0,.55)', b: 0.12, x: 0, y: 0.02 }, anim: 'fade', words: 3, pos: 0.5 },
+  { id: 'crazy', name: 'Crazy', tags: ['viral', 'insta'], font: 'Montserrat', weight: 800, size: 0.05, layout: 'stack',
+    color: '#ffffff', hi: 'none', anim: 'pop', words: 3, pos: 0.5,
+    emph: { scale: 2.1, weight: 900, small: 0.95, otherItalic: true, gradient: ['#FFE27A', '#FFB22E', '#F07800'], glow: 'rgba(255,140,0,.55)' } },
   { id: 'viral-pop', name: 'Viral Pop', tags: ['viral', 'insta'], font: 'Montserrat', weight: 900, size: 0.068, upper: true,
     color: '#ffffff', hiColor: '#FFE600', hi: 'scale', stroke: { w: 0.14, c: '#000000' }, anim: 'pop', words: 3 },
   { id: 'neon-box', name: 'Neon Box', tags: ['viral', 'insta'], font: 'Montserrat', weight: 800, size: 0.062, upper: true,
@@ -70,14 +75,16 @@ export const TAGS = [
 
 export const FONTS_URL = 'https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Bungee' +
   '&family=Baloo+2:wght@700;800&family=Caveat:wght@700&family=Inter:wght@400;500;600;800&family=Kalam:wght@700' +
-  '&family=Luckiest+Guy&family=Montserrat:wght@800;900&family=Mukta:wght@800&family=Noto+Sans+Arabic:wght@700' +
+  '&family=Lato:wght@700&family=Luckiest+Guy&family=Montserrat:ital,wght@0,800;0,900;1,800&family=Mukta:wght@800&family=Noto+Sans+Arabic:wght@700' +
   '&family=Noto+Sans+Bengali:wght@700&family=Noto+Sans+Devanagari:wght@700&family=Noto+Sans+Tamil:wght@700' +
+  '&family=Noto+Sans+Gujarati:wght@700&family=Noto+Sans+Gurmukhi:wght@700&family=Noto+Sans+Kannada:wght@700' +
+  '&family=Noto+Sans+Malayalam:wght@700&family=Noto+Sans+Oriya:wght@700&family=Noto+Sans+Telugu:wght@700' +
   '&family=Oswald:wght@600&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:ital,wght@1,700' +
   '&family=Poppins:wght@700;800&family=Righteous&family=Rozha+One&family=Space+Mono:wght@700&family=Teko:wght@600' +
   '&family=Yatra+One&display=swap';
 
 // Fallbacks so any script (Hindi, Arabic, Bengali, Tamil…) still renders inside a Latin-only font.
-const FALLBACK = `'Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans Bengali', 'Noto Sans Tamil', sans-serif`;
+const FALLBACK = `'Noto Sans Devanagari', 'Noto Sans Bengali', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Oriya', 'Noto Sans Arabic', sans-serif`;
 
 export function fontString(tpl, px) {
   return `${tpl.italic ? 'italic ' : ''}${tpl.weight} ${Math.round(px)}px '${tpl.font}', ${FALLBACK}`;
@@ -86,7 +93,22 @@ export function fontString(tpl, px) {
 export async function loadTemplateFonts() {
   if (!document.fonts) return;
   const loads = TEMPLATES.map(t => document.fonts.load(fontString(t, 40), 'Aaअ').catch(() => {}));
-  ['Noto Sans Devanagari', 'Noto Sans Arabic', 'Noto Sans Bengali', 'Noto Sans Tamil'].forEach(f =>
-    loads.push(document.fonts.load(`700 40px '${f}'`, 'अاঅஅ').catch(() => {})));
+  SAMPLES.forEach(l => { if (l.font) loads.push(document.fonts.load(`700 40px '${l.font}'`, l.text).catch(() => {})); });
+  loads.push(document.fonts.load(`700 40px 'Noto Sans Arabic'`, 'ا').catch(() => {}));
   await Promise.all(loads);
 }
+
+// Preview text per script, so creators can see how each style sets their language.
+export const SAMPLES = [
+  { id: 'en', name: 'English', text: 'this is how your reels go viral every single time' },
+  { id: 'hi', name: 'हिन्दी', font: 'Noto Sans Devanagari', text: 'ऐसे होगी आपकी रील हर बार वायरल' },
+  { id: 'gu', name: 'ગુજરાતી', font: 'Noto Sans Gujarati', text: 'આ રીતે તમારી રીલ દરેક વખતે વાયરલ થશે' },
+  { id: 'mr', name: 'मराठी', font: 'Noto Sans Devanagari', text: 'अशी तुमची रील प्रत्येक वेळी व्हायरल होईल' },
+  { id: 'bn', name: 'বাংলা', font: 'Noto Sans Bengali', text: 'এভাবেই তোমার রিল প্রতিবার ভাইরাল হবে' },
+  { id: 'ta', name: 'தமிழ்', font: 'Noto Sans Tamil', text: 'இப்படித்தான் உங்கள் ரீல் வைரலாகும்' },
+  { id: 'te', name: 'తెలుగు', font: 'Noto Sans Telugu', text: 'ఇలా మీ రీల్ ప్రతిసారీ వైరల్ అవుతుంది' },
+  { id: 'kn', name: 'ಕನ್ನಡ', font: 'Noto Sans Kannada', text: 'ಹೀಗೆ ನಿಮ್ಮ ರೀಲ್ ಪ್ರತಿ ಬಾರಿ ವೈರಲ್ ಆಗುತ್ತದೆ' },
+  { id: 'ml', name: 'മലയാളം', font: 'Noto Sans Malayalam', text: 'ഇങ്ങനെ നിങ്ങളുടെ റീൽ വൈറലാകും' },
+  { id: 'pa', name: 'ਪੰਜਾਬੀ', font: 'Noto Sans Gurmukhi', text: 'ਇਸ ਤਰ੍ਹਾਂ ਤੁਹਾਡੀ ਰੀਲ ਹਰ ਵਾਰ ਵਾਇਰਲ ਹੋਵੇਗੀ' },
+  { id: 'or', name: 'ଓଡ଼ିଆ', font: 'Noto Sans Oriya', text: 'ଏହିପରି ତୁମର ରିଲ୍ ପ୍ରତିଥର ଭାଇରାଲ୍ ହେବ' },
+];
