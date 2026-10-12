@@ -14,14 +14,50 @@
   <nav class="nav">
     <div class="wrap" style="max-width:none">
       <a class="logo" href="index.html"><span class="logo-mark">VC</span>ViralCaption<b>Zone</b></a>
-      <div class="row" style="flex:0 0 auto;gap:8px">
+      <div class="row" id="navActions" style="flex:0 0 auto;gap:8px" hidden>
         <button class="btn btn-sm" id="srtBtn" disabled>SRT</button>
         <button class="btn btn-primary btn-sm" id="exportBtn" disabled>Export video</button>
       </div>
     </div>
   </nav>
 
-  <main class="app">
+  <section class="start" id="start">
+    <h1>Create <span>Captioned</span> Reels</h1>
+    <p class="start-sub">Upload your video and generate captions. Free, and it never leaves your device.</p>
+    <div class="start-card">
+      <label class="start-drop" id="startDrop">
+        <input type="file" id="startFile" accept="video/*,audio/*" hidden>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+        <strong>Click or drag video here</strong>
+        <span>MP4, MOV, WEBM · stays on your device</span>
+      </label>
+      <div class="start-preview" id="startPreview" hidden>
+        <video id="startVideo" controls playsinline></video>
+        <button class="start-remove" id="startRemove" type="button" aria-label="Remove video">✕</button>
+      </div>
+      <div class="start-field">
+        <div class="start-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg> Audio Spoken</div>
+        <div class="combo" id="spokenCombo"></div>
+      </div>
+      <div class="start-field">
+        <div class="start-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg> Caption Language</div>
+        <div class="combo" id="captionCombo"></div>
+      </div>
+      <details class="start-adv">
+        <summary>AI quality</summary>
+        <select id="startModel">
+          <option value="onnx-community/whisper-tiny_timestamped">Fast · ~40 MB one-time download</option>
+          <option value="onnx-community/whisper-base_timestamped" selected>Balanced · ~80 MB</option>
+          <option value="onnx-community/whisper-small_timestamped">Best for Hindi · ~250 MB</option>
+        </select>
+      </details>
+      <button class="start-go" id="startGo" disabled><i id="startBar"></i><span id="startGoText">Upload Video First</span></button>
+      <p class="start-msg" id="startMsg"></p>
+    </div>
+    <p class="start-alt"><a href="#live" id="startLive">Or caption live with your camera →</a> · <a href="#" id="startSkip">Skip to editor</a></p>
+  </section>
+
+  <main class="app" id="editor" hidden>
     <!-- Templates -->
     <aside class="panel">
       <div class="panel-h">Templates</div>

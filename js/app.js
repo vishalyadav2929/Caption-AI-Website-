@@ -199,39 +199,45 @@ async function decodeAudio(file) {
     return out;
   } finally { ac.close(); }
 }
+// Runs speech-to-text on a file. hooks: { onStatus(text), onProgress(pct) }
+async function transcribe(file, { lang, task, model }, hooks = {}) {
+  const audio = await decodeAudio(file).catch(() => { throw new Error('Couldn’t read the audio track from this file.'); });
+  worker = worker || new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
+  const files = {};
+  return new Promise((resolve, reject) => {
+    worker.onmessage = ({ data }) => {
+      if (data.type === 'progress') {
+        files[data.file] = data.progress;
+        const v = Object.values(files);
+        hooks.onProgress && hooks.onProgress(v.reduce((a, b) => a + b, 0) / v.length);
+      } else if (data.type === 'status') hooks.onStatus && hooks.onStatus(data.text);
+      else if (data.type === 'error') reject(new Error(data.text));
+      else if (data.type === 'done') resolve({ words: toWords(data), level: data.level });
+    };
+    worker.postMessage({ audio, model, language: lang.whisper, task }, [audio.buffer]);
+  });
+}
+
 $('genBtn').onclick = async () => {
   if (!S.file) return;
   const lang = LANGUAGES[$('lang').value];
   $('genBtn').disabled = true;
   status('Reading audio…');
-  let audio;
-  try { audio = await decodeAudio(S.file); }
-  catch { $('genBtn').disabled = false; return status('Couldn’t read the audio track from this file.'); }
-
-  worker = worker || new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
-  const files = {};
-  worker.onmessage = ({ data }) => {
-    if (data.type === 'progress') {
-      files[data.file] = data.progress;
-      const v = Object.values(files);
-      status('Downloading AI model (one time)…', v.reduce((a, b) => a + b, 0) / v.length);
-    } else if (data.type === 'status') status(data.text);
-    else if (data.type === 'error') {
-      $('genBtn').disabled = false;
-      status('Transcription failed: ' + data.text + '. Check your internet connection for the first model download, or try the Fast model.');
-    } else if (data.type === 'done') {
-      $('genBtn').disabled = false;
-      S.words = toWords(data);
-      if (lang.hinglish) { S.hinglish = true; $('hinglish').checked = true; }
-      rebuild();
-      status(S.words.length ? `Done. ${S.words.length} words captioned. Pick a style, then export.` : 'No speech found in this file.');
-      if (data.level === 'segment') toast('Word timing is approximate for this model.');
-    }
-  };
-  worker.postMessage({
-    audio, model: $('model').value, language: lang.whisper,
-    task: $('translate').checked ? 'translate' : 'transcribe',
-  }, [audio.buffer]);
+  try {
+    const res = await transcribe(S.file, { lang, model: $('model').value, task: $('translate').checked ? 'translate' : 'transcribe' }, {
+      onStatus: text => status(text),
+      onProgress: pct => status('Downloading AI model (one time)…', pct),
+    });
+    S.words = res.words;
+    if (lang.hinglish) { S.hinglish = true; $('hinglish').checked = true; }
+    rebuild();
+    status(S.words.length ? `Done. ${S.words.length} words captioned. Pick a style, then export.` : 'No speech found in this file.');
+    if (res.level === 'segment') toast('Word timing is approximate for this model.');
+  } catch (err) {
+    status('Transcription failed: ' + err.message + ' Check your internet connection for the first model download, or try the Fast model.');
+  } finally {
+    $('genBtn').disabled = false;
+  }
 };
 function toWords({ chunks, level, duration }) {
   const out = [];
@@ -464,7 +470,7 @@ function drawPlaceholder() {
 }
 function frame() {
   const W = canvas.width, H = canvas.height;
-  const t0 = tpl(), opts = { scale: S.o.scale, pos: S.o.pos ?? undefined };
+  const t0 = tpl(), opts = { scale: S.o.scale, pos: S.o.pos ?? undefined, fill: video };
   if (S.mode === 'file') {
     // Keep the canvas matched to the video's real size (it's only known after metadata loads).
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -493,10 +499,154 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// ---------- start screen: upload → languages → generate ----------
+function openEditor() {
+  $('start').hidden = true;
+  $('editor').hidden = false;
+  $('navActions').hidden = false;
+}
+
+// A small searchable dropdown.
+function combo(el, placeholder, searchText, onChange) {
+  let items = [], value = null;
+  el.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'combo-btn empty';
+  const label = document.createElement('span');
+  btn.appendChild(label);
+  el.appendChild(btn);
+  let pop = null;
+  const close = () => { if (pop) { pop.remove(); pop = null; el.classList.remove('open'); } };
+  const render = () => { label.textContent = value ? value.label : placeholder; btn.classList.toggle('empty', !value); };
+  btn.onclick = () => {
+    if (pop) return close();
+    el.classList.add('open');
+    pop = document.createElement('div'); pop.className = 'combo-pop';
+    const q = document.createElement('input'); q.placeholder = searchText;
+    const list = document.createElement('div'); list.className = 'combo-list';
+    const fill = () => {
+      list.innerHTML = '';
+      if (value) {
+        const c = document.createElement('div'); c.className = 'combo-opt combo-clear'; c.textContent = '✕ Clear selection';
+        c.onclick = () => { value = null; render(); close(); onChange(null); };
+        list.appendChild(c);
+      }
+      items.filter(it => it.label.toLowerCase().includes(q.value.toLowerCase())).forEach(it => {
+        const o = document.createElement('div');
+        o.className = 'combo-opt' + (value && value.id === it.id ? ' on' : '');
+        o.textContent = it.label;
+        o.onclick = () => { value = it; render(); close(); onChange(it); };
+        list.appendChild(o);
+      });
+    };
+    q.oninput = fill; fill();
+    pop.append(q, list);
+    el.appendChild(pop);
+    q.focus();
+  };
+  document.addEventListener('click', e => { if (pop && !el.contains(e.target)) close(); });
+  render();
+  return {
+    setItems(next) { items = next; if (value && !items.some(i => i.id === value.id)) { value = null; render(); } },
+    set(id) { value = items.find(i => i.id === id) || null; render(); },
+    get() { return value; },
+  };
+}
+
+const spokenItems = LANGUAGES.map((l, i) => ({ id: i, label: l.name, lang: l }))
+  .filter(it => !it.lang.hinglish)
+  .sort((a, b) => (a.lang.whisper ? 1 : 0) - (b.lang.whisper ? 1 : 0) || a.label.localeCompare(b.label));
+const start = { spoken: null, caption: null };
+const captionCombo = combo($('captionCombo'), 'Select a language', 'Search caption language…', it => { start.caption = it; syncStart(); });
+const spokenCombo = combo($('spokenCombo'), 'Select a language', 'Search spoken language…', it => {
+  start.spoken = it;
+  const l = it && it.lang;
+  const own = l ? l.name.split(' — ')[0].replace(/ \(.*\)/, '') : '';
+  const opts = !l ? [] : l.whisper === 'hindi'
+    ? [{ id: 'native', label: 'Hindi' }, { id: 'hinglish', label: 'Hinglish (Roman Hindi)' }, { id: 'english', label: 'English' }]
+    : l.whisper === 'english' ? [{ id: 'native', label: 'English' }]
+    : !l.whisper ? [{ id: 'native', label: 'Same as spoken' }, { id: 'english', label: 'English' }]
+    : [{ id: 'native', label: own }, { id: 'english', label: 'English' }];
+  captionCombo.setItems(opts);
+  if (opts.length === 1 || (start.caption && !opts.some(o => o.id === start.caption.id))) captionCombo.set(opts[0] && opts[0].id);
+  start.caption = captionCombo.get();
+  syncStart();
+});
+spokenCombo.setItems(spokenItems);
+
+function syncStart() {
+  const go = $('startGo');
+  if (go.classList.contains('busy')) return;
+  go.disabled = !(S.file && start.spoken && start.caption);
+  $('startGoText').textContent = !S.file ? 'Upload Video First' : !start.spoken || !start.caption ? 'Choose Languages' : 'Generate Captions';
+}
+
+async function startFile(file) {
+  if (!file) return;
+  await loadFile(file);
+  if (!S.file) return;
+  $('startVideo').src = S.fileURL;
+  $('startDrop').hidden = true;
+  $('startPreview').hidden = false;
+  syncStart();
+}
+$('startFile').onchange = e => startFile(e.target.files[0]);
+const sd = $('startDrop');
+['dragenter', 'dragover'].forEach(ev => sd.addEventListener(ev, e => { e.preventDefault(); sd.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => sd.addEventListener(ev, e => { e.preventDefault(); sd.classList.remove('over'); }));
+sd.addEventListener('drop', e => startFile(e.dataTransfer.files[0]));
+$('startRemove').onclick = () => {
+  $('startVideo').removeAttribute('src'); $('startVideo').load();
+  video.removeAttribute('src'); video.load();
+  S.file = null; S.words = [];
+  $('startFile').value = '';
+  $('startPreview').hidden = true; $('startDrop').hidden = false;
+  $('drop').classList.remove('hide');
+  rebuild(); syncStart();
+};
+
+$('startGo').onclick = async () => {
+  const go = $('startGo'), bar = $('startBar'), txt = $('startGoText');
+  const lang = start.spoken.lang, mode = start.caption.id;
+  const task = mode === 'english' && lang.whisper !== 'english' ? 'translate' : 'transcribe';
+  go.classList.add('busy'); go.disabled = true;
+  const t0 = Date.now();
+  let phase = 'Reading audio…';
+  const tick = setInterval(() => {
+    if (phase === 'listen') txt.textContent = `Processing… this may take a minute (${Math.round((Date.now() - t0) / 1000)}s)`;
+  }, 500);
+  txt.textContent = phase;
+  $('startMsg').textContent = '';
+  try {
+    const res = await transcribe(S.file, { lang, task, model: $('startModel').value }, {
+      onProgress: pct => { bar.style.width = `${pct}%`; txt.textContent = `Downloading AI model… ${Math.round(pct)}%`; },
+      onStatus: text => { if (/Listening/.test(text)) { phase = 'listen'; bar.style.width = '100%'; } else txt.textContent = text; },
+    });
+    S.words = res.words;
+    S.hinglish = mode === 'hinglish';
+    $('hinglish').checked = S.hinglish;
+    $('lang').value = start.spoken.id;
+    $('translate').checked = task === 'translate';
+    $('model').value = $('startModel').value;
+    rebuild();
+    openEditor();
+    status(S.words.length ? `Done. ${S.words.length} words captioned. Pick a template, then export.` : 'No speech found in this file.');
+    if (res.level === 'segment') toast('Word timing is approximate for this model.');
+  } catch (err) {
+    $('startMsg').textContent = 'Couldn’t generate captions: ' + err.message + ' The first run needs internet to download the AI model.';
+  } finally {
+    clearInterval(tick);
+    go.classList.remove('busy'); bar.style.width = '0';
+    syncStart();
+  }
+};
+$('startLive').onclick = e => { e.preventDefault(); openEditor(); setMode('live'); };
+$('startSkip').onclick = e => { e.preventDefault(); openEditor(); };
+
 // ---------- boot ----------
 syncControls();
 gallery.select(S.tpl.id);
 status('Upload a video to get started.');
 loadTemplateFonts();
-if (location.hash === '#live') setMode('live');
+if (location.hash === '#live') { openEditor(); setMode('live'); }
 requestAnimationFrame(frame);

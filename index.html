@@ -15,7 +15,7 @@
     <div class="wrap">
       <a class="logo" href="index.html"><span class="logo-mark">VC</span>ViralCaption<b>Zone</b></a>
       <div class="nav-links">
-        <a href="#templates">Templates</a>
+        <a href="templates.html">Templates</a>
         <a href="#languages">Languages</a>
         <a href="#how">How it works</a>
       </div>
@@ -40,9 +40,10 @@
 
   <section class="section wrap" id="templates">
     <h2>Caption templates</h2>
-    <p class="sub">Bold viral pop, karaoke highlights, aesthetic Pinterest serifs and Devanagari styles built for Hindi. Click any style to open it in the editor.</p>
+    <p class="sub">Every style plays live below. Switch the language to see how it handles your script, then click a style to open it in the editor.</p>
     <div class="tabs" id="langTabs" aria-label="Preview language"></div>
     <div class="tabs" id="tabs"></div>
+    <div class="grid-head">Every template · <span id="tplCount"></span></div>
     <div class="grid" id="grid"></div>
   </section>
 
@@ -105,6 +106,7 @@
         tabsEl: document.getElementById('tabs'),
         gridEl: document.getElementById('grid'),
         langEl: document.getElementById('langTabs'),
+        countEl: document.getElementById('tplCount'),
         onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
       });
     });
