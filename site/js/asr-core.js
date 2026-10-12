@@ -80,3 +80,69 @@ export async function transcribeLong(run, audio, { sr = SR, onProgress, shouldSt
   }
   return { words, level, windows: windows.length };
 }
+
+// ---------- clean-up for noisy, real-world audio ----------
+
+/**
+ * Prepare speech for Whisper: remove DC offset and low rumble (wind, traffic, engine hum below ~80 Hz),
+ * then bring the voice to a steady level so quiet speakers aren't lost under background noise.
+ * Returns a new Float32Array; the input is not modified.
+ */
+export function preprocess(audio, { sr = SR, cutoff = 80, targetRms = 0.08, maxGain = 12 } = {}) {
+  // 4th-order Butterworth-style high-pass: two cascaded RBJ biquads (Q = 0.54 and 1.31).
+  let out = new Float32Array(audio);
+  for (const q of [0.5412, 1.3066]) {
+    const w = 2 * Math.PI * cutoff / sr, cos = Math.cos(w), alpha = Math.sin(w) / (2 * q);
+    const a0 = 1 + alpha;
+    const b0 = (1 + cos) / 2 / a0, b1 = -(1 + cos) / a0, b2 = b0, a1 = -2 * cos / a0, a2 = (1 - alpha) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < out.length; i++) {
+      const x = out[i];
+      const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x; y2 = y1; y1 = y;
+      out[i] = y;
+    }
+  }
+  // Loudness: measure the louder half of 50 ms frames (where the voice usually is), not the silences.
+  const frame = Math.floor(sr * 0.05), levels = [];
+  for (let i = 0; i + frame <= out.length; i += frame) {
+    let s = 0; for (let j = i; j < i + frame; j++) s += out[j] * out[j];
+    levels.push(Math.sqrt(s / frame));
+  }
+  if (!levels.length) return out;
+  levels.sort((a, b) => a - b);
+  const voiced = levels.slice(Math.floor(levels.length / 2));
+  const level = voiced.reduce((a, b) => a + b, 0) / voiced.length;
+  if (level < 1e-5) return out;
+  const gain = Math.min(maxGain, targetRms / level);
+  for (let i = 0; i < out.length; i++) {
+    const v = out[i] * gain;
+    out[i] = v > 0.98 ? 0.98 : v < -0.98 ? -0.98 : v; // soft ceiling, no wrap-around clipping
+  }
+  return out;
+}
+
+// Phrases Whisper is known to invent over noise or silence (trained on subtitled videos).
+const HALLUCINATIONS = [
+  /thank(s| you) for watching/i, /please subscribe/i, /like and subscribe/i, /subtitles? by/i, /amara\.org/i,
+  /उपशीर्षक/, /सब्सक्राइब/, /देखने के लिए धन्यवाद/, /^\W*(music|applause|laughter)\W*$/i, /^[\s.…,!?-]*$/,
+];
+
+/** Remove invented filler and runaway repetition ("ok ok ok ok ok", "the same line the same line…"). */
+export function cleanWords(words) {
+  let out = words.filter(w => !HALLUCINATIONS.some(r => r.test(w.text)));
+  // Drop phrases (1–4 words) that repeat more than twice in a row.
+  for (let n = 1; n <= 4; n++) {
+    const keep = [];
+    for (let i = 0; i < out.length; i++) {
+      keep.push(out[i]);
+      if (keep.length >= n * 3) {
+        const k = keep.length;
+        const key = j => keep.slice(k - n * (j + 1), k - n * j).map(w => w.text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')).join(' ');
+        if (key(0) && key(0) === key(1) && key(1) === key(2)) keep.splice(k - n, n);
+      }
+    }
+    out = keep;
+  }
+  return out;
+}

@@ -166,3 +166,42 @@ export function parseSRT(text) {
   });
   return normalize(out);
 }
+
+// ---------- translation ----------
+
+/** Group captions into sentences (for translating whole thoughts, not 3-word fragments). Returns index arrays. */
+export function sentenceGroups(segments, maxWords = 16) {
+  const groups = [];
+  let cur = [], words = 0;
+  segments.forEach((s, i) => {
+    const prev = segments[i - 1];
+    if (cur.length && (words + s.words.length > maxWords || s.start - prev.end > 0.8)) { groups.push(cur); cur = []; words = 0; }
+    cur.push(i); words += s.words.length;
+    if (/[.!?।|]$/.test(s.words[s.words.length - 1].text)) { groups.push(cur); cur = []; words = 0; }
+  });
+  if (cur.length) groups.push(cur);
+  return groups;
+}
+
+/**
+ * Replace a group of captions with translated text. The translated words are shared across the
+ * group's original captions in proportion to each caption's length, so pacing stays natural.
+ * Word times inside are estimated (approx = true).
+ */
+export function applyTranslation(segments, indices, text) {
+  const parts = String(text).split(/\s+/).filter(Boolean);
+  const segs = indices.map(i => segments[i]);
+  if (!parts.length) return segs.map(s => ({ ...s }));
+  const durs = segs.map(s => Math.max(MIN_DUR, s.end - s.start));
+  const total = durs.reduce((a, b) => a + b, 0);
+  // Words per caption, proportional to duration, at least one each while words remain.
+  let counts = durs.map(d => Math.max(1, Math.round(parts.length * d / total)));
+  while (counts.reduce((a, b) => a + b, 0) > parts.length) { const k = counts.indexOf(Math.max(...counts)); counts[k]--; }
+  while (counts.reduce((a, b) => a + b, 0) < parts.length) { const k = durs.indexOf(Math.max(...durs)); counts[k]++; }
+  let k = 0;
+  return segs.map((s, j) => {
+    const take = parts.slice(k, k + counts[j]); k += counts[j];
+    if (!take.length) return null;
+    return { ...s, id: s.id, words: spreadWords(take.join(' '), s.start, s.end), approx: true };
+  }).filter(Boolean);
+}

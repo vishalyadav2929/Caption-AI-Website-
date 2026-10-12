@@ -56,3 +56,28 @@ test('isSilent', () => {
   assert.equal(isSilent(new Float32Array(1000), 0, 1000), true);
   assert.equal(isSilent(tone(1), 0, SR), false);
 });
+
+import { preprocess, cleanWords } from '../../site/js/asr-core.js';
+
+test('preprocess removes low rumble and lifts a quiet voice', () => {
+  const n = SR * 2, a = new Float32Array(n);
+  for (let i = 0; i < n; i++) a[i] = 0.3 * Math.sin(2 * Math.PI * 30 * i / SR) + 0.01 * Math.sin(2 * Math.PI * 300 * i / SR);
+  const before = a.slice();
+  const out = preprocess(a);
+  // 30 Hz rumble is attenuated far more than the 300 Hz "voice": correlate with each.
+  // Amplitude of each frequency (sin + cos, so the filter's phase shift doesn't matter).
+  const amp = f => { let s = 0, c = 0; for (let i = SR; i < n; i++) { s += out[i] * Math.sin(2 * Math.PI * f * i / SR); c += out[i] * Math.cos(2 * Math.PI * f * i / SR); } return 2 * Math.hypot(s, c) / SR; };
+  // Input: rumble 30x louder than the voice. Output: voice clearly louder than the rumble.
+  assert.ok(amp(300) > amp(30) * 1.5, `voice ${amp(300)} vs rumble ${amp(30)}`);
+  let peak = 0; for (const v of out) peak = Math.max(peak, Math.abs(v));
+  assert.ok(peak <= 0.98, 'no clipping');
+  assert.deepEqual(a, before, 'input untouched');
+});
+
+test('cleanWords drops invented filler and runaway repetition', () => {
+  const w = t => t.split(' ').map((text, i) => ({ text, start: i, end: i + 0.5 }));
+  assert.deepEqual(cleanWords(w('ok ok ok ok ok bhai')).map(x => x.text), ['ok', 'ok', 'bhai']);
+  assert.deepEqual(cleanWords(w('kya haal kya haal kya haal kya haal hai')).map(x => x.text).join(' '), 'kya haal kya haal hai');
+  assert.deepEqual(cleanWords([{ text: 'सब्सक्राइब', start: 0, end: 1 }, { text: 'नमस्ते', start: 1, end: 2 }]).map(x => x.text), ['नमस्ते']);
+  assert.deepEqual(cleanWords(w('ye ek normal line hai')).map(x => x.text).join(' '), 'ye ek normal line hai');
+});
