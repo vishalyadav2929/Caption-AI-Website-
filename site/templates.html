@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>All Templates — ViralCaptionZone</title>
+  <meta name="description" content="Every ViralCaptionZone caption style, playing live. Preview each one in English, Hindi and 9 more Indian languages, then open it in the free editor.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link id="fonts" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .tp { max-width: 1280px; margin: 0 auto; padding: 28px 20px 80px; }
+    .back { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px 9px 12px; border-radius: 999px; background: #f4f4f5; border: 1px solid var(--line); color: #3f3f46; font-size: .85rem; font-weight: 600; }
+    .eyebrow { margin-top: 30px; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #3f3f46; }
+    .tp h1 { font-size: clamp(32px, 5vw, 48px); letter-spacing: -.03em; margin: 8px 0 12px; font-weight: 800; }
+    .tp .lead { color: var(--muted); max-width: 620px; margin: 0; font-size: 17px; line-height: 1.7; }
+    .tp .tabs { justify-content: flex-start; margin: 28px 0 0; }
+    .tp #tabs { margin-top: 12px; }
+    .tp .grid-head { margin: 46px 0 18px; font-size: 1.05rem; letter-spacing: -.01em; }
+    .tp footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); text-align: left; }
+    .tp footer a { color: var(--accent); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="tp">
+    <a class="back" href="index.html">← Back</a>
+    <div class="eyebrow">Templates</div>
+    <h1>All templates</h1>
+    <p class="lead">Each style is playing below. Choose a language to see how it handles your script, then open it in the editor and change the size, colour, font and position.</p>
+    <div class="tabs" id="langTabs" aria-label="Preview language"></div>
+    <div class="tabs" id="tabs" aria-label="Filter styles"></div>
+    <div class="grid-head">Every template · <span id="tplCount"></span></div>
+    <div class="grid" id="grid"></div>
+    <footer>Free forever, no sign-up. <a href="app.html">Open the editor →</a> · <a href="privacy.html">Privacy</a></footer>
+  </main>
+
+  <script type="module">
+    import { FONTS_URL, loadTemplateFonts } from './js/templates.js';
+    import { mountGallery } from './js/gallery.js';
+    document.getElementById('fonts').href = FONTS_URL;
+    loadTemplateFonts(); // fonts swap in as they load; previews redraw every frame
+    mountGallery({
+      tabsEl: document.getElementById('tabs'),
+      gridEl: document.getElementById('grid'),
+      langEl: document.getElementById('langTabs'),
+      countEl: document.getElementById('tplCount'),
+      onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
+    });
+  </script>
+</body>
+</html>

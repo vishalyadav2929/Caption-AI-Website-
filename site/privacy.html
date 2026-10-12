@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy — ViralCaptionZone</title>
+  <meta name="description" content="What ViralCaptionZone does with your videos: nothing leaves your device. Here is every outside request the site makes.">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .doc { max-width: 760px; margin: 0 auto; padding: 28px 20px 80px; }
+    .doc h1 { font-size: clamp(30px, 5vw, 42px); letter-spacing: -.03em; margin: 26px 0 10px; }
+    .doc h2 { font-size: 20px; margin: 34px 0 8px; }
+    .doc p, .doc li { color: #3f3f46; line-height: 1.7; }
+    .doc table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+    .doc th, .doc td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .doc th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .doc code { font-size: 13px; background: var(--bg-2); padding: 1px 5px; border-radius: 5px; }
+    .back { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px 9px 12px; border-radius: 999px; background: #f4f4f5; border: 1px solid var(--line); color: #3f3f46; font-size: .85rem; font-weight: 600; }
+    @media (max-width: 640px) { .doc table, .doc thead, .doc tbody, .doc tr, .doc th, .doc td { display: block; } .doc thead { display: none; } .doc td { border: 0; padding: 4px 0; } .doc tr { border-bottom: 1px solid var(--line); padding: 10px 0; } }
+  </style>
+</head>
+<body>
+  <main class="doc">
+    <a class="back" href="index.html">← Back</a>
+    <h1>Privacy</h1>
+    <p><strong>Your videos never leave your device.</strong> Uploading, transcribing, editing and exporting all happen inside your browser. There is no account, no database, no analytics, no ads and no cookies.</p>
+
+    <h2>Outside requests the site makes</h2>
+    <table>
+      <thead><tr><th>Service</th><th>When</th><th>What is sent</th></tr></thead>
+      <tbody>
+        <tr><td>Netlify (hosting)</td><td>Every page load</td><td>A normal web request for the site’s files. Netlify keeps standard server logs.</td></tr>
+        <tr><td>Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>)</td><td>Every page load</td><td>Requests for the caption fonts. Google sees your IP address and browser, as with any web font.</td></tr>
+        <tr><td>jsDelivr (<code>cdn.jsdelivr.net</code>)</td><td>Only when you click “Generate captions”</td><td>Downloads the open-source transformers.js library and its WebAssembly runtime.</td></tr>
+        <tr><td>Hugging Face (<code>huggingface.co</code>)</td><td>Only the first time you generate captions with a given quality</td><td>Downloads the Whisper speech model (about 40–250 MB). Your browser caches it, so later runs don’t download it again. Your audio is <em>not</em> sent; the model runs on your device.</td></tr>
+        <tr><td>Your browser’s speech service</td><td>Only in “Live captions” mode</td><td>Live captions use your browser’s built-in speech recognition. In Chrome and Edge this sends microphone audio to Google or Microsoft to be transcribed. Uploaded videos never use this.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>What stays on your device</h2>
+    <ul>
+      <li>The video or audio file you choose. It is opened locally and never uploaded.</li>
+      <li>The transcript, your caption edits and style settings. They live in this browser tab and are gone when you close it.</li>
+      <li>The exported video, which your browser saves straight to your downloads.</li>
+    </ul>
+  </main>
+</body>
+</html>

@@ -15,7 +15,7 @@
     <div class="wrap">
       <a class="logo" href="index.html"><span class="logo-mark">VC</span>ViralCaption<b>Zone</b></a>
       <div class="nav-links">
-        <a href="#templates">Templates</a>
+        <a href="templates.html">Templates</a>
         <a href="#languages">Languages</a>
         <a href="#how">How it works</a>
       </div>
@@ -40,8 +40,10 @@
 
   <section class="section wrap" id="templates">
     <h2>Caption templates</h2>
-    <p class="sub">Bold viral pop, karaoke highlights, aesthetic Pinterest serifs and Devanagari styles built for Hindi. Click any style to open it in the editor.</p>
+    <p class="sub">Every style plays live below. Switch the language to see how it handles your script, then click a style to open it in the editor.</p>
+    <div class="tabs" id="langTabs" aria-label="Preview language"></div>
     <div class="tabs" id="tabs"></div>
+    <div class="grid-head">Every template · <span id="tplCount"></span></div>
     <div class="grid" id="grid"></div>
   </section>
 
@@ -83,7 +85,7 @@
     </div>
   </section>
 
-  <footer><div class="wrap">ViralCaptionZone · Free caption generator for creators</div></footer>
+  <footer><div class="wrap">ViralCaptionZone · Free caption generator for creators · <a href="privacy.html">Privacy</a> · <a href="templates.html">All templates</a></div></footer>
 
   <script type="module">
     import { FONTS_URL, loadTemplateFonts } from './js/templates.js';
@@ -96,16 +98,20 @@
       const s = document.createElement('span'); s.textContent = l.name; langs.appendChild(s);
     });
 
-    loadTemplateFonts().finally(() => {
+    // Render immediately; the canvases redraw every frame, so fonts swap in as they arrive.
+    loadTemplateFonts();
+    {
       mountPhone(document.getElementById('ph1'), 'viral-pop', 'stop scrolling this will change how you edit', 280);
       mountPhone(document.getElementById('ph2'), 'desi-bold', 'भाई ये ट्रिक सच में काम करती है', 20);
       mountPhone(document.getElementById('ph3'), 'aesthetic-serif', 'slow mornings and soft light are my favourite', 330);
       mountGallery({
         tabsEl: document.getElementById('tabs'),
         gridEl: document.getElementById('grid'),
+        langEl: document.getElementById('langTabs'),
+        countEl: document.getElementById('tplCount'),
         onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
       });
-    });
+    }
   </script>
 </body>
 </html>

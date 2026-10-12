@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ViralCaptionZone Editor — Free Video Captions</title>
+  <meta name="description" content="Add viral animated captions to your videos for free. Hindi, Hinglish, English and 30+ languages. Live captions and upload.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link id="fonts" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="nav">
+    <div class="wrap" style="max-width:none">
+      <a class="logo" href="index.html"><span class="logo-mark">VC</span>ViralCaption<b>Zone</b></a>
+      <div class="row nav-actions" id="navActions" hidden>
+        <button class="btn btn-sm icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
+        <button class="btn btn-sm icon-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
+        <button class="btn btn-sm" id="srtBtn" disabled>SRT</button>
+        <button class="btn btn-primary btn-sm" id="exportBtn" disabled>Export video</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="start" id="start" aria-labelledby="startTitle">
+    <h1 id="startTitle">Create <span>Captioned</span> Reels</h1>
+    <p class="start-sub">Upload your video and generate captions. Free, and it never leaves your device.</p>
+    <div class="start-card">
+      <label class="start-drop" id="startDrop">
+        <input type="file" id="startFile" accept="video/*,audio/*" hidden>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+        <strong>Click or drag video here</strong>
+        <span>MP4, MOV, WEBM, M4A, MP3 · up to 2 GB · stays on your device</span>
+      </label>
+      <div class="start-preview" id="startPreview" hidden>
+        <video id="startVideo" controls playsinline></video>
+        <button class="start-remove" id="startRemove" type="button" aria-label="Remove video">✕</button>
+      </div>
+      <p class="start-meta" id="startMeta"></p>
+      <div class="start-field">
+        <div class="start-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg> Audio Spoken</div>
+        <div class="combo" id="spokenCombo"></div>
+      </div>
+      <div class="start-field">
+        <div class="start-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg> Caption Language</div>
+        <div class="combo" id="captionCombo"></div>
+      </div>
+      <details class="start-adv">
+        <summary>AI quality</summary>
+        <select id="startModel">
+          <option value="fast">Fast · ~40 MB one-time download</option>
+          <option value="balanced" selected>Balanced · ~80 MB (recommended)</option>
+          <option value="best">Best for Hindi · ~250 MB, slower</option>
+        </select>
+      </details>
+      <button class="start-go" id="startGo" disabled><i id="startBar"></i><span id="startGoText">Upload Video First</span></button>
+      <button class="start-cancel" id="startCancel" type="button" hidden>Cancel</button>
+      <p class="start-msg" id="startMsg" role="status" aria-live="polite"></p>
+      <p class="start-note">The first run downloads the speech model from Hugging Face (one time, then cached). Your video itself is never uploaded. <a href="privacy.html">Privacy</a></p>
+    </div>
+    <p class="start-alt"><a href="#live" id="startLive">Or caption live with your camera →</a> · <a href="#" id="startSkip">Skip to editor</a></p>
+  </section>
+
+  <main class="app" id="editor" hidden>
+    <!-- Templates -->
+    <aside class="panel" aria-label="Templates">
+      <div class="panel-h">Templates</div>
+      <div class="panel-b">
+        <div class="tabs" id="langTabs" aria-label="Preview language"></div>
+        <div class="tabs" id="tabs" aria-label="Filter styles"></div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </aside>
+
+    <!-- Stage -->
+    <section class="stage" id="main" aria-label="Preview">
+      <div class="mode-switch" role="tablist" aria-label="Mode">
+        <button id="modeFile" class="on" role="tab">Upload video</button>
+        <button id="modeLive" role="tab">Live captions</button>
+      </div>
+      <div class="canvas-box" id="box">
+        <canvas id="stage" width="1080" height="1920" aria-label="Video preview with captions"></canvas>
+        <label class="drop" id="drop">
+          <input type="file" id="fileIn" accept="video/*,audio/*,.mov,.mkv,.m4a,.mp3" hidden>
+          <div>
+            <div class="drop-ic" aria-hidden="true">⬆</div>
+            <strong>Drop a video here</strong>
+            or click to choose · MP4, MOV, WEBM
+          </div>
+        </label>
+        <div class="export-ov" id="exportOv" hidden>
+          <div class="export-card" role="status" aria-live="polite">
+            <strong id="exportTitle">Exporting video…</strong>
+            <div class="bar"><i id="exportBar"></i></div>
+            <span id="exportText">Preparing…</span>
+            <small>Keep this tab open and visible. Export runs in real time, so it takes as long as the video.</small>
+            <button class="btn btn-sm" id="exportCancel">Cancel export</button>
+          </div>
+        </div>
+      </div>
+      <div class="transport" id="fileControls">
+        <button class="btn btn-sm" id="playBtn" disabled aria-label="Play">▶ Play</button>
+        <input type="range" class="seek" id="seek" min="0" max="1000" value="0" disabled aria-label="Seek">
+        <span class="time" id="time">0:00 / 0:00</span>
+        <button class="btn btn-sm icon-btn" id="fsBtn" title="Full screen" aria-label="Full screen">⛶</button>
+        <label class="btn btn-sm" for="fileIn">Replace</label>
+      </div>
+      <p class="meta" id="meta"></p>
+      <div class="transport" id="liveControls" hidden>
+        <button class="btn btn-sm" id="camBtn">Start camera</button>
+        <button class="btn btn-sm btn-primary" id="recBtn" disabled>● Record</button>
+        <span class="time" id="liveTime"></span>
+      </div>
+    </section>
+
+    <!-- Captions & style -->
+    <aside class="panel" aria-label="Captions and style">
+      <div class="ptabs" role="tablist">
+        <button class="ptab on" id="tabCaptions" role="tab" aria-selected="true" aria-controls="paneCaptions">Captions</button>
+        <button class="ptab" id="tabStyle" role="tab" aria-selected="false" aria-controls="paneStyle">Style</button>
+      </div>
+      <div class="panel-b" id="paneCaptions" role="tabpanel">
+        <div class="status" id="status" role="status" aria-live="polite"></div>
+
+        <details class="gen" id="genBox">
+          <summary>Generate captions from audio</summary>
+          <div class="field">
+            <label for="lang">Audio language</label>
+            <select id="lang"></select>
+          </div>
+          <div id="fileOnly">
+            <div class="field">
+              <label for="model">AI quality</label>
+              <select id="model">
+                <option value="fast">Fast · ~40 MB</option>
+                <option value="balanced" selected>Balanced · ~80 MB</option>
+                <option value="best">Best for Hindi · ~250 MB</option>
+              </select>
+            </div>
+            <label class="check field"><input type="checkbox" id="translate"> Translate captions to English</label>
+            <div class="row">
+              <button class="btn btn-primary" id="genBtn" disabled>Generate captions</button>
+              <button class="btn" id="genCancel" hidden>Cancel</button>
+            </div>
+            <p class="hint">Replaces the current captions. The speech model downloads once, then is cached.</p>
+          </div>
+        </details>
+        <label class="check field" style="margin-top:12px"><input type="checkbox" id="hinglish"> Show Hindi as Hinglish (Roman)</label>
+        <div class="row field">
+          <label class="inline" for="words">Words per caption <b id="wordsVal"></b></label>
+          <input type="range" id="words" min="1" max="8" value="3" aria-describedby="wordsHint">
+        </div>
+        <p class="hint" id="wordsHint">Changing this regroups all captions. Your text and timing are kept.</p>
+
+        <div class="panel-h sub-h">
+          <span>Captions <small id="segCount"></small></span>
+          <span class="row" style="gap:6px;flex:0 0 auto">
+            <button class="btn btn-sm" id="addSeg">+ Add</button>
+            <label class="btn btn-sm" for="srtIn">Import SRT</label>
+          </span>
+          <input type="file" id="srtIn" accept=".srt,.vtt,text/plain" hidden>
+        </div>
+        <div class="segs" id="segs"></div>
+      </div>
+
+      <div class="panel-b" id="paneStyle" role="tabpanel" hidden>
+        <p class="hint">Changes apply to the preview and the exported video. <button class="link" id="resetStyle">Reset to template</button></p>
+        <div class="group">
+          <h3>Text</h3>
+          <div class="field"><label for="size">Size <b id="sizeVal"></b></label><input type="range" id="size" min="50" max="180" value="100"></div>
+          <div class="row field">
+            <div><label for="weight">Weight</label>
+              <select id="weight"><option value="">Template</option><option value="400">Regular</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option><option value="900">Black</option></select></div>
+            <div><label for="caseSel">Case</label>
+              <select id="caseSel"><option value="">Template</option><option value="upper">UPPERCASE</option><option value="lower">lowercase</option><option value="none">As spoken</option></select></div>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="color" value="#ffffff" aria-label="Text colour"> Text</div>
+            <div class="color"><input type="color" id="hiColor" value="#ffe600" aria-label="Highlight colour"> Spoken word</div>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Outline &amp; shadow</h3>
+          <div class="row field">
+            <div class="color"><input type="color" id="strokeColor" value="#000000" aria-label="Outline colour"> Outline</div>
+            <div><label for="strokeW">Thickness <b id="strokeWVal"></b></label><input type="range" id="strokeW" min="0" max="30" value="0"></div>
+          </div>
+          <label class="check field"><input type="checkbox" id="shadow"> Drop shadow</label>
+        </div>
+        <div class="group">
+          <h3>Background</h3>
+          <div class="row field">
+            <div class="color"><input type="color" id="bgColor" value="#000000" aria-label="Background colour"> Colour</div>
+            <div><label for="bgOp">Opacity <b id="bgOpVal"></b></label><input type="range" id="bgOp" min="0" max="100" value="0"></div>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Layout</h3>
+          <div class="field"><label>Alignment</label>
+            <div class="seg-ctl" id="alignCtl" role="radiogroup" aria-label="Alignment">
+              <button data-v="left" role="radio">Left</button><button data-v="center" role="radio">Center</button><button data-v="right" role="radio">Right</button>
+            </div>
+          </div>
+          <div class="field"><label for="pos">Vertical position <b id="posVal"></b></label><input type="range" id="pos" min="6" max="95" value="72"></div>
+          <div class="field"><label for="maxW">Max line width <b id="maxWVal"></b></label><input type="range" id="maxW" min="40" max="96" value="88"></div>
+          <div class="field"><label for="lineGap">Line spacing <b id="lineGapVal"></b></label><input type="range" id="lineGap" min="70" max="180" value="116"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
