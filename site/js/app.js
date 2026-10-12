@@ -140,6 +140,15 @@ const gallery = mountGallery({
   },
 });
 
+// On phones and tablets the template strip sits right under the video, so a tap shows the change at once.
+{
+  const mq = window.matchMedia('(max-width: 1100px)');
+  const home = $('grid').parentElement;
+  const place = () => (mq.matches ? $('mTpl') : home).appendChild($('grid'));
+  if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
+  place();
+}
+
 // ---------- style controls ----------
 function syncControls() {
   const t = tpl(), o = S.o;
@@ -219,7 +228,7 @@ function renderSegs() {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
     const d = document.createElement('p');
-    d.textContent = S.file ? 'Open “Generate captions from audio” above, import an SRT file, or add captions by hand.' : 'Upload a video first.';
+    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
     p.appendChild(d);
     box.appendChild(p);
     return;
@@ -416,11 +425,20 @@ function toMono16k(chans, rate) {
   }
   return out;
 }
-async function decodeFull(file) {
+// QuickTime (.mov) and MP4 share the same box layout; some browsers only refuse the 'qt  ' brand.
+function patchMovBrand(buf) {
+  const u = new Uint8Array(buf.slice(0));
+  const tag = String.fromCharCode(...u.subarray(4, 8));
+  if (tag !== 'ftyp') return null;
+  const brand = String.fromCharCode(...u.subarray(8, 12));
+  if (brand !== 'qt  ') return null;
+  u.set([0x69, 0x73, 0x6f, 0x6d], 8); // 'isom'
+  return u.buffer;
+}
+async function decodeBuffer(data) {
   const AC = window.AudioContext || window.webkitAudioContext;
   const ac = new AC();
   try {
-    const data = await file.arrayBuffer();
     const buf = await new Promise((res, rej) => {
       const p = ac.decodeAudioData(data, res, rej);
       if (p && p.then) p.then(res, rej);
@@ -430,10 +448,20 @@ async function decodeFull(file) {
     return toMono16k(chans, buf.sampleRate);
   } finally { ac.close && ac.close(); }
 }
+async function decodeFull(file) {
+  const data = await file.arrayBuffer();
+  try { return await decodeBuffer(data.slice(0)); } catch (err) {
+    const patched = patchMovBrand(data);
+    if (!patched) throw err;
+    return decodeBuffer(patched);
+  }
+}
 let realtimeJob = null;
 async function captureRealtime(ui) {
   ensureAudioGraph();
-  await audioCtx.resume();
+  // iPhone only starts audio after a tap. Without it the video silently never plays.
+  await Promise.race([audioCtx.resume(), new Promise(r => setTimeout(r, 1500))]);
+  if (audioCtx.state !== 'running') throw new Error('needs-tap');
   const dur = video.duration;
   if (!isFinite(dur) || dur <= 0) throw new Error('Couldn’t read the video length.');
   const sp = audioCtx.createScriptProcessor(4096, 2, 1);
@@ -451,9 +479,13 @@ async function captureRealtime(ui) {
     video.pause();
     video.currentTime = 0;
     await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; });
-    try { await video.play(); } catch { throw new Error('needs-tap'); }
-    await new Promise(resolve => {
+    try {
+      await Promise.race([video.play(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]);
+    } catch { throw new Error('needs-tap'); }
+    const startedAt = Date.now();
+    await new Promise((resolve, reject) => {
       const tick = setInterval(() => {
+        if (video.currentTime < 0.05 && Date.now() - startedAt > 4000) { clearInterval(tick); reject(new Error('needs-tap')); return; }
         ui.onText(`Reading audio… ${fmt(video.currentTime)} of ${fmt(dur)} (your browser can’t extract it instantly)`);
         ui.onPct(video.currentTime / dur * 100);
         if (job.cancelled || video.ended) { clearInterval(tick); resolve(); }
@@ -537,9 +569,9 @@ function describeResult(res) {
 // One generation runner for both the start screen and the editor. Progress shows in the editor's card.
 let genRunning = false;
 function genUI(on) {
-  $('genProg').hidden = !on;
-  $('genProgTap').hidden = true;
-  $('genProgCancel').hidden = !on;
+  $('genOv').hidden = !on;
+  $('genOvTap').hidden = true;
+  $('genOvCancel').hidden = !on;
   $('genCancel').hidden = !on;
 }
 async function runGeneration({ lang, mode, quality }) {
@@ -547,12 +579,14 @@ async function runGeneration({ lang, mode, quality }) {
   genRunning = true;
   const task = mode === 'english' && lang.whisper !== 'english' ? 'translate' : 'transcribe';
   S.pendingMode = mode;
-  genUI(true); syncActions();
-  $('genProgBar').style.width = '0';
+  genUI(true); syncActions(); renderSegs(); status('');
+  $('genOv').classList.remove('wait');
+  $('genOvBar').style.width = '0';
+  $('genOvText').textContent = 'Starting…';
   try {
     const res = await transcribe({ lang, task, quality }, {
-      onText: t => { $('genProgText').textContent = t; },
-      onPct: p => { $('genProgBar').style.width = p == null ? '0' : `${p}%`; },
+      onText: t => { $('genOvText').textContent = t; },
+      onPct: p => { $('genOvBar').style.width = p == null ? '0' : `${p}%`; },
     });
     if (!applyTranscript(res, mode)) status('No speech was found in this video. You can add captions by hand.');
     else status(describeResult(res));
@@ -560,20 +594,36 @@ async function runGeneration({ lang, mode, quality }) {
   } catch (err) {
     if (err.message === 'needs-tap') {
       // iPhone needs a fresh tap before it will play the video to read its sound.
-      $('genProgText').textContent = 'Your browser needs one tap to read the audio.';
-      $('genProgTap').hidden = false; $('genProgCancel').hidden = true;
-      $('genProgTap').onclick = () => { $('genProgTap').hidden = true; genRunning = false; runGeneration({ lang, mode, quality }); };
+      $('genOvText').textContent = 'Tap once so your phone lets us read the video’s sound.';
+      $('genOvBar').style.width = '0';
+      $('genOvTap').hidden = false; $('genOvCancel').hidden = false;
+      $('genOv').classList.add('wait');
+      $('genOvTap').onclick = () => {
+        // Unlock audio and playback inside the tap itself (required on iPhone), then retry.
+        ensureAudioGraph();
+        audioCtx.resume();
+        const p = video.play(); if (p && p.then) p.then(() => video.pause(), () => {});
+        S.decodeFailed = true; S.awaitingTap = null;
+        $('genOvTap').hidden = true;
+        genRunning = false;
+        runGeneration({ lang, mode, quality });
+      };
+      genRunning = false;
+      S.awaitingTap = { lang, mode, quality };
       return;
     }
     genUI(false);
     status(err.message === 'cancelled' ? 'Transcription cancelled. Open “Generate captions from audio” to try again.'
       : `Couldn’t generate captions: ${err.message} The first run needs internet to download the speech model.`);
-    $('genBox').open = true;
+    $('moreOpts').open = true;
   } finally {
     genRunning = false; syncActions();
   }
 }
-$('genProgCancel').onclick = () => cancelTranscribe();
+$('genOvCancel').onclick = () => {
+  if (S.awaitingTap) { S.awaitingTap = null; genUI(false); status('Cancelled. Open “More options” to generate captions again.'); return; }
+  cancelTranscribe();
+};
 
 $('genBtn').onclick = () => {
   if (!S.file || genRunning) return;

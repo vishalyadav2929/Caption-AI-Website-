@@ -100,7 +100,7 @@ await step('sample caption shows the template on the video before captions exist
 
 await step('real-time audio fallback (used when a browser can’t decode the file) reads the full track', async () => {
   await page.evaluate(() => { window.__vczForceRealtime = true; window.__vczAudioLength = 0; });
-  await page.evaluate(() => { document.getElementById('genBox').open = true; });
+  await page.evaluate(() => { document.getElementById('moreOpts').open = true; });
   await page.click('#genBtn');
   await page.waitForFunction(() => /Couldn’t generate captions/.test(document.getElementById('status').textContent) && window.__vczAudioLength > 0, null, { timeout: 60000 });
   const len = await vcz(() => window.__vczAudioLength);
@@ -279,6 +279,32 @@ await step('no horizontal overflow on phones, tablets and laptops (incl. editor 
     await m.click('#exportBtn'); await m.waitForTimeout(150); await over('export dialog');
     await ctx.close();
   }
+});
+
+await step('iPhone-style audio lock: shows “Tap to start captions”, and a tap reads the audio', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await ctx.addInitScript(() => {
+    localStorage.setItem('vcz-langs', JSON.stringify({ spoken: 'Hindi — हिन्दी', caption: 'hinglish', quality: 'balanced' }));
+    window.__vczForceRealtime = true; // the path iPhone takes when it can't decode a .mov directly
+    let tapped = false;
+    addEventListener('pointerdown', () => { tapped = true; }, true);
+    addEventListener('touchstart', () => { tapped = true; }, true);
+    const AC = window.AudioContext, resume = AC.prototype.resume, play = HTMLMediaElement.prototype.play;
+    Object.defineProperty(AC.prototype, 'state', { get() { return this.__running ? 'running' : 'suspended'; } });
+    AC.prototype.resume = function () { if (tapped) { this.__running = true; return resume.call(this); } return new Promise(() => {}); };
+    HTMLMediaElement.prototype.play = function () { return tapped ? play.call(this) : Promise.reject(new DOMException('blocked', 'NotAllowedError')); };
+  });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.setInputFiles('#startFile', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#editor:not([hidden])');
+  await m.waitForSelector('#genOvTap:not([hidden])', { timeout: 15000 });
+  await m.screenshot({ path: join(OUT, 'mobile-tap-to-start.png') });
+  await m.tap('#genOvTap');
+  await m.waitForFunction(() => window.__vczAudioLength > 0, null, { timeout: 30000 });
+  const len = await m.evaluate(() => window.__vczAudioLength);
+  assert.ok(Math.abs(len / 16000 - 6) < 0.6, `read ${len / 16000}s of audio after the tap`);
+  await ctx.close();
 });
 
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
