@@ -1,6 +1,7 @@
 import { TEMPLATES, FONTS_URL, loadTemplateFonts } from './templates.js';
 import { buildChunks, findChunk, drawCaption } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
+import { detectTextLang, onlineTranslate } from './translate.js';
 import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
@@ -607,7 +608,8 @@ function cancelTranscribe() {
 function applyTranscript(res, captionMode) {
   if (!res.words.length) return false;
   S.hinglish = captionMode === 'hinglish';
-  S.textLang = captionMode === 'english' ? 'en' : (S.genLang && S.genLang.bcp ? S.genLang.bcp.split('-')[0] : null);
+  const hint = captionMode === 'english' ? 'en' : (S.genLang && S.genLang.bcp ? S.genLang.bcp.split('-')[0] : null);
+  S.textLang = detectTextLang(res.words.map(w => w.text).join(' '), hint);
   S.segments = C.segmentsFromWords(res.words, wordsPerCaption(), 32);
   S.selected = -1;
   syncControls(); renderSegs(); syncActions(); commit();
@@ -646,6 +648,12 @@ async function runGeneration({ lang, mode, quality }) {
     if (!applyTranscript(res, mode)) status('No speech was found in this video. You can add captions by hand.');
     else status(describeResult(res));
     genUI(false);
+    // Small models sometimes write English for Hindi (or Hinglish) speech. Turn it back into what was asked for.
+    if (S.segments.length && mode !== 'english' && lang.whisper && lang.whisper !== 'english' && S.textLang === 'en') {
+      const want = LANGUAGES.find(l => l.whisper === lang.whisper && !!l.hinglish === (mode === 'hinglish'));
+      toast(`The speech model wrote English. Converting to ${want.name.split(' — ')[0]}… For exact words, use “Best for Hindi” quality.`, 7000);
+      await translateTo(want);
+    }
   } catch (err) {
     if (err.message === 'needs-tap') {
       // iPhone needs a fresh tap before it will play the video to read its sound.
@@ -1016,8 +1024,8 @@ async function exportVideo({ kind = 'video', size } = {}) {
 $('exportCancel').onclick = () => { if (exportJob) { exportJob.cancelled = true; exportJob.finish && exportJob.finish(); } };
 
 // ---------- translation ----------
-// Chrome (desktop, 138+) has a free on-device translator. Elsewhere, English is still possible by
-// re-running Whisper in translate mode; other targets need Chrome.
+// Chrome (desktop, 138+) has a free on-device translator. Every other browser (iPhone Safari, Android,
+// Firefox) uses the free MyMemory service, which receives the caption text only, never the video.
 const hasTranslator = () => 'Translator' in self;
 LANGUAGES.forEach((l, i) => {
   if (!l.whisper && !l.hinglish) return;
@@ -1027,48 +1035,51 @@ LANGUAGES.forEach((l, i) => {
 });
 $('trTarget').value = String(LANGUAGES.findIndex(l => l.whisper === 'english'));
 $('trNote').textContent = hasTranslator()
-  ? 'Translates on your device with Chrome’s built-in translator (a small one-time download per language). Timing is kept; word highlights inside each caption become estimated.'
-  : 'This browser has no built-in translator, so only English is available here (it re-runs the speech model). For other languages, open the site in Chrome on a computer.';
+  ? 'Translates on your device with Chrome’s built-in translator. Timing is kept; word highlights inside each caption become estimated.'
+  : 'Translates the caption text with the free MyMemory service (your video is never sent). Hindi ↔ Hinglish works offline. Timing is kept; word highlights become estimated.';
 $('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
 
+// The language the caption text is really in, judged from its script.
 function sourceLangCode() {
-  if (S.textLang) return S.textLang;
   const l = LANGUAGES[$('lang').value];
-  return l && l.whisper ? l.bcp.split('-')[0] : null;
+  const hint = S.textLang || (l && l.whisper ? l.bcp.split('-')[0] : null);
+  return detectTextLang(S.segments.map(C.segmentText).join(' '), hint);
 }
-$('trBtn').onclick = async () => {
-  const target = LANGUAGES[$('trTarget').value];
+async function getTranslator(src, tgt) {
+  if (hasTranslator()) {
+    try {
+      const avail = await self.Translator.availability({ sourceLanguage: src, targetLanguage: tgt });
+      if (avail !== 'unavailable') {
+        status('Preparing translator…');
+        const tr = await self.Translator.create({
+          sourceLanguage: src, targetLanguage: tgt,
+          monitor(m) { m.addEventListener('downloadprogress', e => status(`Downloading translator… ${Math.round((e.loaded || 0) * 100)}%`, (e.loaded || 0) * 100)); },
+        });
+        return t => tr.translate(t);
+      }
+    } catch { /* fall through to the online service */ }
+  }
+  return t => onlineTranslate(t, src, tgt);
+}
+$('trBtn').onclick = () => translateTo(LANGUAGES[$('trTarget').value]);
+async function translateTo(target) {
   const tgt = target.bcp.split('-')[0];
   if (!S.segments.length) return toast('There are no captions to translate yet.');
   const src = sourceLangCode();
   if (src === tgt) {
-    if (target.hinglish !== S.hinglish) { S.hinglish = !!target.hinglish; syncControls(); renderSegs(); commit(); }
-    return toast(target.hinglish ? 'Showing Hindi as Hinglish.' : 'Captions are already in that language.');
+    if (!!target.hinglish !== S.hinglish) { S.hinglish = !!target.hinglish; S.textLang = src; syncControls(); renderSegs(); commit(); }
+    return toast(target.hinglish ? 'Showing Hindi as Hinglish.' : tgt === 'hi' ? 'Showing Hindi in Devanagari.' : 'Captions are already in that language.');
   }
-  if (!hasTranslator()) {
-    if (tgt === 'en' && S.file && S.genLang) {
-      if (!confirm('Translate to English by re-running the speech model? Your caption edits will be replaced.')) return;
-      return runGeneration({ lang: S.genLang, mode: 'english', quality: $('model').value });
-    }
-    return toast('Translating to that language needs Chrome on a computer. English works here.', 6000);
-  }
-  if (!src) return toast('Pick the language the captions are in under “Generate again → Audio language” first.');
   const btn = $('trBtn');
   btn.disabled = true;
   try {
-    const avail = await self.Translator.availability({ sourceLanguage: src, targetLanguage: tgt });
-    if (avail === 'unavailable') throw new Error(`Chrome can’t translate ${src} → ${tgt} yet.`);
-    status('Preparing translator…');
-    const tr = await self.Translator.create({
-      sourceLanguage: src, targetLanguage: tgt,
-      monitor(m) { m.addEventListener('downloadprogress', e => status(`Downloading translator… ${Math.round((e.loaded || 0) * 100)}%`, (e.loaded || 0) * 100)); },
-    });
+    const translate = await getTranslator(src, tgt);
     const groups = C.sentenceGroups(S.segments);
     const next = [];
     for (let g = 0; g < groups.length; g++) {
       status(`Translating… ${g + 1} of ${groups.length}`, (g / groups.length) * 100);
       const text = groups[g].map(i => C.segmentText(S.segments[i])).join(' ');
-      next.push(...C.applyTranslation(S.segments, groups[g], await tr.translate(text)));
+      next.push(...C.applyTranslation(S.segments, groups[g], await translate(text)));
     }
     S.textLang = tgt;
     S.hinglish = !!target.hinglish;
@@ -1080,7 +1091,7 @@ $('trBtn').onclick = async () => {
   } finally {
     btn.disabled = false;
   }
-};
+}
 
 // ---------- SRT ----------
 $('srtBtn').onclick = () => {

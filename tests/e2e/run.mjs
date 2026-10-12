@@ -370,6 +370,50 @@ await step('translate captions with the browser translator (mocked) keeps the ti
   await ctx.close();
 });
 
+await step('without a browser translator: English captions → Hinglish → Hindi → Bangla (online service mocked)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const asked = [];
+  const HI = { 'this is how your reels go viral': 'ऐसे तुम्हारी रील्स वायरल होती हैं', 'my friend': 'मेरा दोस्त' };
+  await ctx.route('https://api.mymemory.translated.net/**', route => {
+    const u = new URL(route.request().url());
+    const q = u.searchParams.get('q'), pair = u.searchParams.get('langpair');
+    asked.push(pair);
+    const out = pair === 'en|hi' ? (HI[q.replace(/[.!?]$/, '')] || q) : `[${pair}] ${q}`;
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ responseData: { translatedText: out }, responseStatus: 200 }) });
+  });
+  await ctx.addInitScript(() => { delete self.Translator; }); // like iPhone Safari
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  assert.equal(await m.evaluate(() => 'Translator' in self), false);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForTimeout(300);
+  const srt = '1\n00:00:00,300 --> 00:00:02,000\nthis is how your\n\n2\n00:00:02,000 --> 00:00:04,000\nreels go viral.\n\n3\n00:00:05,000 --> 00:00:06,500\nmy friend\n';
+  await m.setInputFiles('#srtIn', { name: 'en.srt', mimeType: 'text/plain', buffer: Buffer.from(srt) });
+  await m.evaluate(() => { document.getElementById('lang').value = '0'; }); // Hindi picked, but the text is English
+  const shown = () => m.evaluate(() => window.__vcz.S.segments.map(s => s.words.map(w => w.text).join(' ')).join(' '));
+  await m.click('#trOpen');
+  await m.selectOption('#trTarget', { label: 'Hinglish (Hindi → Roman)' });
+  await m.click('#trBtn');
+  await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
+  assert.deepEqual(asked, ['en|hi', 'en|hi'], 'English text is detected and sent as en → hi');
+  assert.match(await shown(), /वायरल/);
+  assert.equal(await m.evaluate(() => window.__vcz.S.hinglish), true, 'Hinglish turns on, so it shows in Roman letters');
+  // Hinglish → Hindi script needs no network.
+  await m.selectOption('#trTarget', { label: 'Hindi — हिन्दी' });
+  await m.click('#trBtn');
+  assert.equal(await m.evaluate(() => window.__vcz.S.hinglish), false);
+  assert.equal(asked.length, 2);
+  // Hindi → Bangla.
+  await m.evaluate(() => { document.getElementById('status').textContent = ''; });
+  await m.selectOption('#trTarget', { label: 'Bengali — বাংলা' });
+  await m.click('#trBtn');
+  await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
+  assert.equal(asked.at(-1), 'hi|bn');
+  assert.match(await shown(), /\[hi\|bn\]/);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

@@ -33,6 +33,7 @@
         <tr><td>Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>)</td><td>Every page load</td><td>Requests for the caption fonts. Google sees your IP address and browser, as with any web font.</td></tr>
         <tr><td>jsDelivr (<code>cdn.jsdelivr.net</code>)</td><td>Only when you click “Generate captions”</td><td>Downloads the open-source transformers.js library and its WebAssembly runtime.</td></tr>
         <tr><td>Hugging Face (<code>huggingface.co</code>)</td><td>Only the first time you generate captions with a given quality</td><td>Downloads the Whisper speech model (about 40–250 MB). Your browser caches it, so later runs don’t download it again. Your audio is <em>not</em> sent; the model runs on your device.</td></tr>
+        <tr><td>MyMemory (<code>api.mymemory.translated.net</code>)</td><td>Only when you press “Translate” in a browser without a built-in translator (e.g. iPhone Safari)</td><td>The caption text only, to be translated. Never your video or audio. Hindi ↔ Hinglish is done on your device and sends nothing.</td></tr>
         <tr><td>Your browser’s speech service</td><td>Only in “Live captions” mode</td><td>Live captions use your browser’s built-in speech recognition. In Chrome and Edge this sends microphone audio to Google or Microsoft to be transcribed. Uploaded videos never use this.</td></tr>
       </tbody>
     </table>
