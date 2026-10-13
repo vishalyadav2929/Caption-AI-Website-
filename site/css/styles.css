@@ -479,3 +479,13 @@ body.no-scroll .nav { visibility: hidden; }
 }
 .home .section { scroll-margin-top: 80px; }
 .demo-styles:empty { min-height: 215px; }
+/* Captions tab: only what matters on top */
+.cap-bar { display: grid; gap: 8px; padding: 12px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.cap-bar > label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cap-bar .tr-row select { width: 100%; }
+.words-row { align-items: center; gap: 12px; }
+.words-row label { white-space: nowrap; font-size: 14px; }
+.words-row input { flex: 1; min-width: 0; }
+.make-btn { width: 100%; margin-top: 10px; }
+.make-lang { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.cap-bar[hidden] { display: none; }

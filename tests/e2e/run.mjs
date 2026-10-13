@@ -382,10 +382,8 @@ await step('translate captions with the browser translator (mocked) keeps the ti
   await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
   await m.evaluate(() => { document.getElementById('lang').value = '3'; }); // English (US) as caption language
   const before = await m.evaluate(() => window.__vcz.S.segments.map(s => [s.start, s.end]));
-  await m.click('#trOpen');
   await m.selectOption('#trTarget', { label: 'Spanish — Español' });
-  await m.click('#trBtn');
-  await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
+    await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
   const text = await m.evaluate(() => window.__vcz.S.segments.map(s => s.words.map(w => w.text).join(' ')).join(' | '));
   assert.match(text, /\[en>es\]/);
   assert.match(text.replace(/ \| /g, ' '), /THIS IS HOW YOUR/);
@@ -418,23 +416,19 @@ await step('without a browser translator: English captions → Hinglish → Hind
   await m.setInputFiles('#srtIn', { name: 'en.srt', mimeType: 'text/plain', buffer: Buffer.from(srt) });
   await m.evaluate(() => { document.getElementById('lang').value = '0'; }); // Hindi picked, but the text is English
   const shown = () => m.evaluate(() => window.__vcz.S.segments.map(s => s.words.map(w => w.text).join(' ')).join(' '));
-  await m.click('#trOpen');
   await m.selectOption('#trTarget', { label: 'Hinglish (Hindi → Roman)' });
-  await m.click('#trBtn');
-  await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
+    await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
   assert.deepEqual(asked, ['en|hi', 'en|hi'], 'English text is detected and sent as en → hi');
   assert.match(await shown(), /वायरल/);
   assert.equal(await m.evaluate(() => window.__vcz.S.hinglish), true, 'Hinglish turns on, so it shows in Roman letters');
   // Hinglish → Hindi script needs no network.
   await m.selectOption('#trTarget', { label: 'Hindi — हिन्दी' });
-  await m.click('#trBtn');
-  assert.equal(await m.evaluate(() => window.__vcz.S.hinglish), false);
+    assert.equal(await m.evaluate(() => window.__vcz.S.hinglish), false);
   assert.equal(asked.length, 2);
   // Hindi → Bangla.
   await m.evaluate(() => { document.getElementById('status').textContent = ''; });
   await m.selectOption('#trTarget', { label: 'Bengali — বাংলা' });
-  await m.click('#trBtn');
-  await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
+    await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
   assert.equal(asked.at(-1), 'hi|bn');
   assert.match(await shown(), /\[hi\|bn\]/);
   await ctx.close();
@@ -567,6 +561,23 @@ await step('home: live demo plays the manifest clip and switches caption style o
   assert.match(await m.getAttribute('.demo-style >> nth=1', 'class'), /\bon\b/);
   await m.waitForTimeout(300);
   assert.notDeepEqual(a, await shot(), 'captioned side changes');
+  await ctx.close();
+});
+
+await step('editor upload: captions start by themselves (saved languages) or a "Make captions" button shows', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#makeCaptions');
+  assert.match(await m.textContent('.make-lang'), /Spoken language/);
+  await m.click('#makeCaptions');
+  await m.waitForFunction(() => /Couldn’t generate captions/.test(document.getElementById('status').textContent), null, { timeout: 60000 });
+  // With languages saved from an earlier visit, a new video starts captions straight away.
+  await m.evaluate(() => localStorage.setItem('vcz-langs', JSON.stringify({ spoken: 'Hindi — हिन्दी', caption: 'hinglish', quality: 'balanced' })));
+  await m.setInputFiles('#fileIn', join(FIX, 'landscape.webm'));
+  await m.waitForFunction(() => !document.getElementById('genOv').hidden || /Couldn’t generate/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
   await ctx.close();
 });
 

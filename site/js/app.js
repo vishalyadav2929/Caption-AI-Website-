@@ -157,6 +157,7 @@ const gallery = mountGallery({
 function syncControls() {
   const t = tpl(), o = S.o;
   $('words').value = wordsPerCaption(); $('wordsVal').textContent = wordsPerCaption();
+  syncLangPicker();
   $('size').value = Math.round((o.scale || 1) * 100); $('sizeVal').textContent = `${$('size').value}%`;
   $('weight').value = o.weight || '';
   $('caseSel').value = o.case || '';
@@ -228,12 +229,29 @@ function renderSegs() {
   box.innerHTML = '';
   S.active = -1;
   $('segCount').textContent = S.segments.length ? `· ${S.segments.length}` : '';
+  $('capBar').hidden = !S.segments.length; // language + words-on-screen only matter once there are captions
   if (!S.segments.length) {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
     const d = document.createElement('p');
-    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
-    p.appendChild(d);
+    d.textContent = genRunning ? 'Your captions are being made. They appear here as they’re ready.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? '' : 'Upload a video first.';
+    if (d.textContent) p.appendChild(d);
+    if (S.file && !genRunning && S.mode === 'file') {
+      // The one thing to do next, right where the captions will appear.
+      const l = LANGUAGES[$('lang').value];
+      const go = document.createElement('button');
+      go.className = 'btn btn-primary btn-lg make-btn'; go.id = 'makeCaptions'; go.type = 'button';
+      go.textContent = '✨ Make captions';
+      go.onclick = () => startCaptions();
+      const which = document.createElement('p');
+      which.className = 'make-lang';
+      which.append(`Spoken language: ${l ? l.name.split(' — ')[0] : 'Auto-detect'} · `);
+      const ch = document.createElement('button');
+      ch.className = 'link'; ch.type = 'button'; ch.textContent = 'change';
+      ch.onclick = () => { $('moreOpts').open = true; $('lang').focus(); $('lang').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+      which.appendChild(ch);
+      p.append(go, which);
+    }
     box.appendChild(p);
     return;
   }
@@ -386,7 +404,7 @@ async function loadFile(file) {
   $('playBtn').disabled = false; $('seek').disabled = false;
   const meta = fileMeta();
   $('meta').textContent = meta;
-  status(`Loaded “${file.name}”. Generate captions, import an SRT, or add captions by hand.`);
+  status(`Loaded “${file.name}”.`);
   if (video.duration > 600) toast('Long video: transcription and export both take a while. Under 3 minutes works best.', 6000);
   renderSegs(); syncActions();
   return true;
@@ -405,12 +423,12 @@ function fitCanvas(w, h) {
 $('fileIn').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (f && S.segments.length && !confirm('Use a different video? Your current captions will be removed.')) return;
-  await loadFile(f);
+  if (await loadFile(f)) autoCaption();
 };
 const box = $('box');
 ['dragenter', 'dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
-box.addEventListener('drop', e => { if (S.mode === 'file' && !S.exporting) loadFile(e.dataTransfer.files[0]); });
+box.addEventListener('drop', async e => { if (S.mode === 'file' && !S.exporting && await loadFile(e.dataTransfer.files[0])) autoCaption(); });
 
 // ---------- playback ----------
 function togglePlay() { if (!video.src || S.exporting || S.mode !== 'file') return; video.paused ? video.play() : video.pause(); }
@@ -1192,6 +1210,15 @@ $('trNote').textContent = hasTranslator()
   ? 'Translates on your device with Chrome’s built-in translator. Timing is kept; word highlights inside each caption become estimated.'
   : 'Translates the caption text with the free MyMemory service (your video is never sent). Hindi ↔ Hinglish works offline. Timing is kept; word highlights become estimated.';
 $('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+// Keep the caption-language picker showing what the captions are in now.
+function syncLangPicker() {
+  const code = S.textLang || (S.genLang && S.genLang.bcp.split('-')[0]);
+  if (!code) return;
+  const i = LANGUAGES.findIndex(l => l.whisper && l.bcp.split('-')[0] === code && !!l.hinglish === !!(S.hinglish && code === 'hi'));
+  if (i >= 0) $('trTarget').value = String(i);
+}
+// Picking a language applies it right away.
+$('trTarget').onchange = () => $('trBtn').click();
 
 // The language the caption text is really in, judged from its script.
 function sourceLangCode() {
@@ -1480,6 +1507,23 @@ function beginFromStart() {
   $('translate').checked = start.caption.id === 'english';
   openEditor();
   runGeneration({ lang: start.spoken.lang, mode: start.caption.id, quality: $('startModel').value });
+}
+
+/** Make captions with the editor's current language choice. */
+function startCaptions() {
+  if (!S.file || genRunning) return;
+  const lang = LANGUAGES[$('lang').value];
+  const mode = lang.hinglish || S.hinglish ? 'hinglish' : $('translate').checked ? 'english' : 'native';
+  runGeneration({ lang, mode, quality: $('model').value });
+}
+/** A video was dropped into the editor: start captions straight away with the languages used last time. */
+function autoCaption() {
+  const saved = store.get();
+  const sp = saved && spokenItems.find(x => x.lang.name === saved.spoken);
+  if (!sp) { renderSegs(); return; } // no saved languages yet: the "Make captions" button is shown instead
+  $('lang').value = sp.id;
+  if (saved.quality) $('model').value = saved.quality;
+  runGeneration({ lang: sp.lang, mode: saved.caption || 'native', quality: $('model').value });
 }
 
 async function startFile(file) {
