@@ -51,6 +51,11 @@ export function chunksToWords(chunks, level, offset, windowEnd) {
     let [s, e] = c.timestamp || [0, null];
     if (s == null) continue;
     if (e == null) e = level === 'word' ? s + 0.3 : windowEnd - offset;
+    // Whisper pads every clip to 30 s and sometimes invents words in that padding, timed after the
+    // real audio ends. Such captions would never show on the video, so drop them, and keep ends inside.
+    const len = windowEnd - offset;
+    if (s >= len - 0.05) continue;
+    e = Math.min(e, len);
     if (level === 'word') {
       words.push({ text, start: +(s + offset).toFixed(3), end: +(Math.max(e, s + 0.05) + offset).toFixed(3) });
     } else {

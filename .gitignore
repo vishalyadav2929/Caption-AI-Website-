@@ -2,3 +2,5 @@
 node_modules
 tests/e2e/out/
 tests/asr/.cache/
+out-ads/
+tests/qa/out/
