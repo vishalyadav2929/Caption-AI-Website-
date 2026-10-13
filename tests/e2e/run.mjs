@@ -670,6 +670,44 @@ await step('timeline: words, captions and waveform; click jumps, double-click ed
   await ctx.close();
 });
 
+await step('sound effects: add from the menu, auto pop on captions, delete, and the export contains them', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('.tl-add');
+  assert.ok(await m.locator('.tl-snd').count() >= 12, 'sound list');
+  await m.evaluate(() => { window.__vczVideo.currentTime = 2.5; });
+  await m.waitForTimeout(200);
+  await m.locator('.tl-snd .add', { hasText: 'Boom' }).click();
+  assert.equal(await m.locator('.tsfx:not(.auto)').count(), 1);
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.sfx[0].id), 'boom');
+  await m.selectOption('.tl-auto-sel', 'pop');
+  assert.equal(await m.locator('.tsfx.auto').count(), 3, 'one pop per caption');
+  // Select and delete the boom, then undo it back.
+  await m.locator('.tsfx:not(.auto)').click();
+  await m.keyboard.press('Delete');
+  assert.equal(await m.locator('.tsfx:not(.auto)').count(), 0);
+  await m.click('#undoBtn');
+  assert.equal(await m.locator('.tsfx:not(.auto)').count(), 1);
+  // Export: the boom at 2.5 s must be louder there than the original audio.
+  await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
+  const dl = m.waitForEvent('download', { timeout: 90000 });
+  await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]');
+  await m.check('input[name=xKind][value=video]'); await m.click('#xGo');
+  const d = await dl; const file = join(OUT, 'sfx-' + d.suggestedFilename()); await d.saveAs(file);
+  const rms = (f, ss) => +execFileSync('sh', ['-c', `ffmpeg -v error -ss ${ss} -t 0.25 -i "${f}" -vn -af "lowpass=f=150,astats=metadata=1:reset=0" -f null - 2>&1; ffmpeg -ss ${ss} -t 0.25 -i "${f}" -vn -af "lowpass=f=150,volumedetect" -f null - 2>&1 | grep -o 'mean_volume: [-0-9.]*' | grep -o '[-0-9.]*$'`]).toString().trim().split('\n').pop();
+  const orig = rms(join(FIX, 'portrait.webm'), 2.55), out = rms(file, 2.55);
+  assert.ok(out > orig + 10, `boom audible in export: low-band ${orig} dB -> ${out} dB`);
+  console.log('   sfx export: low band at 2.55 s', orig, 'dB ->', out, 'dB');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

@@ -15,6 +15,7 @@ export function mountTimeline(root, api) {
       <div class="tl-pos" role="group" aria-label="Caption position">
         <button type="button" data-pos="0.2">Top</button><button type="button" data-pos="0.5">Middle</button><button type="button" data-pos="0.78">Bottom</button>
       </div>
+      <button type="button" class="tl-add" aria-haspopup="true">+ Sound</button>
       <span class="tl-zoom"><button type="button" data-z="-1" aria-label="Zoom out">−</button><button type="button" data-z="1" aria-label="Zoom in">+</button></span>
     </div>
     <div class="tl-scroll" tabindex="0" aria-label="Timeline: click to jump, double-click a word to edit it, Delete removes the selected word">
@@ -22,12 +23,31 @@ export function mountTimeline(root, api) {
         <div class="tl-ruler"></div>
         <div class="tl-row tl-words"></div>
         <div class="tl-row tl-caps"></div>
+        <div class="tl-row tl-sfx"></div>
         <canvas class="tl-wave" height="40"></canvas>
         <div class="tl-head"></div>
       </div>
     </div>
-    <p class="tl-hint">Click a word to jump · double-click to fix it · Delete removes it</p>`;
+    <div class="tl-menu" hidden>
+      <div class="tl-menu-h"><b>Sound effects</b><span>Tap ▶ to hear, + to add at the playhead</span></div>
+      <div class="tl-sounds"></div>
+      <label class="tl-auto">On every caption: <select class="tl-auto-sel"><option value="">Off</option></select></label>
+    </div>
+    <p class="tl-hint">Click a word to jump · double-click to fix it · Delete removes the selected word or sound</p>`;
   const $ = s => root.querySelector(s);
+  const sfxRow = $('.tl-sfx'), menu = $('.tl-menu');
+  let sfxSel = null;
+  (api.sounds || []).forEach(snd => {
+    const row = document.createElement('div'); row.className = 'tl-snd';
+    const play = document.createElement('button'); play.type = 'button'; play.textContent = '▶'; play.setAttribute('aria-label', `Play ${snd.name}`);
+    play.onclick = () => api.previewSound(snd.id);
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'add'; add.textContent = `${snd.icon} ${snd.name} +`;
+    add.onclick = () => { api.addSound(snd.id); };
+    row.append(play, add); $('.tl-sounds').appendChild(row);
+    const o = document.createElement('option'); o.value = snd.id; o.textContent = `${snd.icon} ${snd.name}`; $('.tl-auto-sel').appendChild(o);
+  });
+  $('.tl-add').onclick = () => { menu.hidden = !menu.hidden; $('.tl-auto-sel').value = api.autoSound() || ''; };
+  $('.tl-auto-sel').onchange = e => api.setAutoSound(e.target.value || null);
   const scroll = $('.tl-scroll'), inner = $('.tl-inner'), ruler = $('.tl-ruler'), wordsRow = $('.tl-words'), capsRow = $('.tl-caps'), wave = $('.tl-wave'), head = $('.tl-head');
   let zi = 2, pps = ZOOMS[zi], fitted = false, sel = null; // sel = [si, wi]
 
@@ -50,7 +70,9 @@ export function mountTimeline(root, api) {
     api.seek(Math.max(0, x / pps));
   });
   scroll.addEventListener('keydown', e => {
-    if (!sel || document.activeElement.isContentEditable) return;
+    if (document.activeElement.isContentEditable) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sfxSel != null) { e.preventDefault(); const i = sfxSel; sfxSel = null; api.deleteSound(i); return; }
+    if (!sel) return;
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const [si, wi] = sel; sel = null; api.deleteWord(si, wi); }
   });
 
@@ -100,6 +122,17 @@ export function mountTimeline(root, api) {
         };
         wordsRow.appendChild(b);
       });
+    });
+    sfxRow.innerHTML = '';
+    (api.soundList ? api.soundList() : []).forEach((fx, i) => {
+      const snd = (api.sounds || []).find(s => s.id === fx.id);
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tsfx' + (fx.auto ? ' auto' : '') + (sfxSel === i && !fx.auto ? ' sel' : '');
+      b.style.left = `${fx.t * pps}px`;
+      b.textContent = snd ? snd.icon : '♪';
+      b.title = `${snd ? snd.name : fx.id} at ${fx.t.toFixed(2)}s${fx.auto ? ' (automatic)' : ' · Delete removes it'}`;
+      b.onclick = e => { e.stopPropagation(); api.previewSound(fx.id); if (!fx.auto) { sfxSel = fx.index; sel = null; render(); scroll.focus({ preventScroll: true }); } };
+      sfxRow.appendChild(b);
     });
     drawWave(W);
     syncPos();
