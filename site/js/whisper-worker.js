@@ -112,6 +112,7 @@ async function transcribe({ audio, quality, language, task, debugFailWord }) {
 self.onmessage = async ({ data }) => {
   // Start downloading/loading the model while the user is still choosing languages.
   for (const n of data.noWordTiming || []) noWordTiming.add(n); // remembered from earlier visits
+  if (data.cpuOnly) forceCpu = true; // this computer's graphics chip stalled before
   if (data.type === 'preload') { load(data.quality).catch(() => {}); return; }
   if (data.type !== 'transcribe') return;
   try {

@@ -157,6 +157,7 @@ const gallery = mountGallery({
 function syncControls() {
   const t = tpl(), o = S.o;
   $('words').value = wordsPerCaption(); $('wordsVal').textContent = wordsPerCaption();
+  syncLangPicker();
   $('size').value = Math.round((o.scale || 1) * 100); $('sizeVal').textContent = `${$('size').value}%`;
   $('weight').value = o.weight || '';
   $('caseSel').value = o.case || '';
@@ -228,12 +229,29 @@ function renderSegs() {
   box.innerHTML = '';
   S.active = -1;
   $('segCount').textContent = S.segments.length ? `· ${S.segments.length}` : '';
+  $('capBar').hidden = !S.segments.length; // language + words-on-screen only matter once there are captions
   if (!S.segments.length) {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
     const d = document.createElement('p');
-    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
-    p.appendChild(d);
+    d.textContent = genRunning ? 'Your captions are being made. They appear here as they’re ready.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? '' : 'Upload a video first.';
+    if (d.textContent) p.appendChild(d);
+    if (S.file && !genRunning && S.mode === 'file') {
+      // The one thing to do next, right where the captions will appear.
+      const l = LANGUAGES[$('lang').value];
+      const go = document.createElement('button');
+      go.className = 'btn btn-primary btn-lg make-btn'; go.id = 'makeCaptions'; go.type = 'button';
+      go.textContent = '✨ Make captions';
+      go.onclick = () => startCaptions();
+      const which = document.createElement('p');
+      which.className = 'make-lang';
+      which.append(`Spoken language: ${l ? l.name.split(' — ')[0] : 'Auto-detect'} · `);
+      const ch = document.createElement('button');
+      ch.className = 'link'; ch.type = 'button'; ch.textContent = 'change';
+      ch.onclick = () => { $('moreOpts').open = true; $('lang').focus(); $('lang').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+      which.appendChild(ch);
+      p.append(go, which);
+    }
     box.appendChild(p);
     return;
   }
@@ -386,7 +404,7 @@ async function loadFile(file) {
   $('playBtn').disabled = false; $('seek').disabled = false;
   const meta = fileMeta();
   $('meta').textContent = meta;
-  status(`Loaded “${file.name}”. Generate captions, import an SRT, or add captions by hand.`);
+  status(`Loaded “${file.name}”.`);
   if (video.duration > 600) toast('Long video: transcription and export both take a while. Under 3 minutes works best.', 6000);
   renderSegs(); syncActions();
   return true;
@@ -405,12 +423,12 @@ function fitCanvas(w, h) {
 $('fileIn').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (f && S.segments.length && !confirm('Use a different video? Your current captions will be removed.')) return;
-  await loadFile(f);
+  if (await loadFile(f)) autoCaption();
 };
 const box = $('box');
 ['dragenter', 'dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
-box.addEventListener('drop', e => { if (S.mode === 'file' && !S.exporting) loadFile(e.dataTransfer.files[0]); });
+box.addEventListener('drop', async e => { if (S.mode === 'file' && !S.exporting && await loadFile(e.dataTransfer.files[0])) autoCaption(); });
 
 // ---------- playback ----------
 function togglePlay() { if (!video.src || S.exporting || S.mode !== 'file') return; video.paused ? video.play() : video.pause(); }
@@ -480,7 +498,7 @@ function getWorker() {
 /** Download and load the speech model in the background while the user picks languages. */
 async function preloadModel(quality) {
   if (useCloud() && await cloudAvailable()) return; // Fast mode needs no download
-  try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList() }); } catch { /* not critical */ }
+  try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList(), cpuOnly: cpuOnly() }); } catch { /* not critical */ }
 }
 // Model builds that couldn't give word timing on this device before (so we don't retry them every time).
 const noWordMem = new Set(); // also kept in memory, for private browsing where storage fails
@@ -655,18 +673,31 @@ async function transcribe({ lang, task, quality }, ui) {
       return await runWorker(audio.slice(), { lang, task, quality }, ui);
     } catch (err) {
       if (err.switchBuild && attempt === 0) { ui.onReset && ui.onReset(); ui.onText('Switching to a model with word-by-word timing…'); continue; }
+      if (err.gpuStall && attempt < 2) {
+        try { localStorage.setItem('vcz-nogpu', '1'); } catch { /* private mode */ }
+        noGpuMem = true;
+        ui.onReset && ui.onReset(); ui.onText('This computer’s graphics chip is too slow for this, switching to the processor…');
+        continue;
+      }
       throw err;
     }
   }
 }
 // If the worker goes silent this long, the phone most likely killed it (out of memory).
 const WORKER_SILENCE_MS = 150000;
+// On the graphics chip (WebGPU) the first part takes a few seconds; some laptop chips stall instead.
+const GPU_STALL_MS = 40000;
+let noGpuMem = false;
+const cpuOnly = () => { if (noGpuMem || window.__vczNoGpu) return true; try { return localStorage.getItem('vcz-nogpu') === '1'; } catch { return false; } };
 function runWorker(audio, { lang, task, quality }, ui) {
   getWorker();
   return new Promise((resolve, reject) => {
-    let last = Date.now(), listenStart = Date.now();
+    let last = Date.now(), listenStart = Date.now(), device = null, listening = false, partsDone = 0;
     const fail = err => { clearInterval(watch); busyGen = null; if (worker) { worker.terminate(); worker = null; } reject(err); };
     const watch = setInterval(() => {
+      if (device === 'webgpu' && listening && !partsDone && Date.now() - listenStart > (window.__vczGpuStallMs || GPU_STALL_MS)) {
+        return fail(Object.assign(new Error('graphics chip stalled'), { gpuStall: true }));
+      }
       if (Date.now() - last > WORKER_SILENCE_MS) fail(new Error('The speech model stopped responding. The phone may be low on memory: close other apps, or pick “Fast” quality under More options, and try again.'));
     }, 5000);
     busyGen = { reject: err => { clearInterval(watch); reject(err); } };
@@ -679,17 +710,22 @@ function runWorker(audio, { lang, task, quality }, ui) {
       if (data.type === 'download') {
         const pct = data.loaded / data.total * 100;
         ui.onText(`Loading speech model… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)} (downloaded only the first time)`); ui.onPct(pct);
-      } else if (data.type === 'status') { if (/Listening/.test(data.text)) listenStart = Date.now(); ui.onText(data.text); }
+      } else if (data.type === 'status') {
+        if (/Listening/.test(data.text)) { listenStart = Date.now(); listening = true; ui.onPct(3); }
+        ui.onText(data.text);
+      }
+      else if (data.type === 'model') { device = window.__vczPretendGpu && !cpuOnly() ? 'webgpu' : data.device; } // (pretend: tests only)
       else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
       else if (data.type === 'noWordTiming') { noWordMem.add(data.name); try { localStorage.setItem('vcz-noword', JSON.stringify([...new Set([...noWordList(), data.name])])); } catch { /* private mode */ } }
       else if (data.type === 'transcribe') {
+        partsDone = data.done;
         // After the first part we know this phone's speed, so say roughly how long is left.
         const left = data.done && data.done < data.total ? Math.round((Date.now() - listenStart) / data.done * (data.total - data.done) / 1000) : 0;
         ui.onText(`Writing captions… part ${Math.min(data.done + 1, data.total)} of ${data.total}${left ? ` · about ${left} s left` : ''}`); ui.onPct(data.done / data.total * 100);
       } else if (data.type === 'error') { fail(Object.assign(new Error(data.text), { switchBuild: data.switchBuild })); }
       else if (data.type === 'done') { clearInterval(watch); busyGen = null; resolve(data); }
     };
-    worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task, noWordTiming: noWordList(), debugFailWord: window.__vczDebugFailWord }, [audio.buffer]);
+    worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task, noWordTiming: noWordList(), cpuOnly: cpuOnly(), debugFailWord: window.__vczDebugFailWord }, [audio.buffer]);
   });
 }
 function cancelTranscribe() {
@@ -1174,6 +1210,15 @@ $('trNote').textContent = hasTranslator()
   ? 'Translates on your device with Chrome’s built-in translator. Timing is kept; word highlights inside each caption become estimated.'
   : 'Translates the caption text with the free MyMemory service (your video is never sent). Hindi ↔ Hinglish works offline. Timing is kept; word highlights become estimated.';
 $('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+// Keep the caption-language picker showing what the captions are in now.
+function syncLangPicker() {
+  const code = S.textLang || (S.genLang && S.genLang.bcp.split('-')[0]);
+  if (!code) return;
+  const i = LANGUAGES.findIndex(l => l.whisper && l.bcp.split('-')[0] === code && !!l.hinglish === !!(S.hinglish && code === 'hi'));
+  if (i >= 0) $('trTarget').value = String(i);
+}
+// Picking a language applies it right away.
+$('trTarget').onchange = () => $('trBtn').click();
 
 // The language the caption text is really in, judged from its script.
 function sourceLangCode() {
@@ -1462,6 +1507,23 @@ function beginFromStart() {
   $('translate').checked = start.caption.id === 'english';
   openEditor();
   runGeneration({ lang: start.spoken.lang, mode: start.caption.id, quality: $('startModel').value });
+}
+
+/** Make captions with the editor's current language choice. */
+function startCaptions() {
+  if (!S.file || genRunning) return;
+  const lang = LANGUAGES[$('lang').value];
+  const mode = lang.hinglish || S.hinglish ? 'hinglish' : $('translate').checked ? 'english' : 'native';
+  runGeneration({ lang, mode, quality: $('model').value });
+}
+/** A video was dropped into the editor: start captions straight away with the languages used last time. */
+function autoCaption() {
+  const saved = store.get();
+  const sp = saved && spokenItems.find(x => x.lang.name === saved.spoken);
+  if (!sp) { renderSegs(); return; } // no saved languages yet: the "Make captions" button is shown instead
+  $('lang').value = sp.id;
+  if (saved.quality) $('model').value = saved.quality;
+  runGeneration({ lang: sp.lang, mode: saved.caption || 'native', quality: $('model').value });
 }
 
 async function startFile(file) {
