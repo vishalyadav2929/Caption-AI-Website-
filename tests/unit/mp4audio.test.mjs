@@ -30,3 +30,27 @@ for (const f of ['iphone-like.mov', 'stereo44k.mp4']) {
 test('a file without AAC audio is rejected', () => {
   assert.throws(() => extractAacAdts(load('portrait.webm')), /moov|audio/);
 });
+
+test('export copies the original AAC audio into the new MP4 bit for bit', async () => {
+  const { readFileSync, writeFileSync, mkdtempSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { readAacTrack } = await import('../../site/js/mp4audio.js');
+  const { Muxer, ArrayBufferTarget } = await import('../../site/js/vendor/mp4-muxer.js');
+  for (const name of ['iphone-like.mov', 'stereo44k.mp4']) {
+    const src = new URL(`../fixtures/${name}`, import.meta.url);
+    const b = readFileSync(src);
+    const t = readAacTrack(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+    const muxer = new Muxer({ target: new ArrayBufferTarget(), audio: { codec: 'aac', sampleRate: t.sampleRate, numberOfChannels: t.channels }, fastStart: false });
+    const step = 1024 / t.sampleRate * 1e6;
+    const meta = { decoderConfig: { codec: `mp4a.40.${t.objectType}`, sampleRate: t.sampleRate, numberOfChannels: t.channels, description: t.asc } };
+    t.frames.forEach((f, i) => muxer.addAudioChunkRaw(f, 'key', Math.round(i * step), Math.round(step), i ? undefined : meta));
+    muxer.finalize();
+    const out = join(mkdtempSync(join(tmpdir(), 'vcz-')), 'out.mp4');
+    writeFileSync(out, new Uint8Array(muxer.target.buffer));
+    const hashes = f => execFileSync('ffmpeg', ['-v', 'error', '-i', f, '-map', '0:a', '-c', 'copy', '-f', 'framemd5', '-']).toString()
+      .split('\n').filter(l => l && !l.startsWith('#')).map(l => l.split(',')[5].trim()); // packet data hash (later fields are side data)
+    assert.deepEqual(hashes(out), hashes(src.pathname), `${name}: audio packets identical`);
+  }
+});

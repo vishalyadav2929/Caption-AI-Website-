@@ -14,7 +14,9 @@ const MODELS = {
   best: ['onnx-community/whisper-small_timestamped', 'Xenova/whisper-small'],
 };
 
-let asr = null, loadedKey = null, loadedDevice = null, wordLevelBroken = false, forceCpu = false;
+let asr = null, loadedKey = null, loadedDevice = null, loadedName = null, wordLevelBroken = false, forceCpu = false, wordError = null;
+// Model builds whose word-by-word timing failed on this device: skip them so another build can try.
+const noWordTiming = new Set();
 const post = msg => self.postMessage(msg);
 
 // One load at a time: a preload and a real run share the same promise.
@@ -47,13 +49,15 @@ async function loadNow(quality) {
   }
   plans.push({ device: 'wasm', dtype: 'q8' });
   let lastErr;
-  for (const name of MODELS[quality] || MODELS.balanced) {
+  const all = MODELS[quality] || MODELS.balanced;
+  const names = all.filter(n => !noWordTiming.has(n));
+  for (const name of names.length ? names : all) {
     for (const plan of plans) {
       try {
         post({ type: 'status', text: `Loading speech model (${plan.device === 'webgpu' ? 'GPU' : 'CPU'})…` });
         asr = await pipeline('automatic-speech-recognition', name, { ...plan, progress_callback });
         const device = plan.device;
-        loadedKey = quality; loadedDevice = device; wordLevelBroken = false;
+        loadedKey = quality; loadedDevice = device; loadedName = name; wordLevelBroken = names.length === 0;
         post({ type: 'model', name, device });
         return asr;
       } catch (err) { lastErr = err; }
@@ -62,22 +66,33 @@ async function loadNow(quality) {
   throw lastErr || new Error('Could not load a speech model.');
 }
 
-async function transcribe({ audio, quality, language, task }) {
+async function transcribe({ audio, quality, language, task, debugFailWord }) {
   {
-    const run = await load(quality);
+    await load(quality);
     const base = { task: task || 'transcribe' };
     if (language) base.language = language;
     const runWindow = async sub => {
-      if (!wordLevelBroken) {
+      while (!wordLevelBroken) {
         try {
-          const out = await run(sub, { ...base, return_timestamps: 'word' });
+          if (debugFailWord && debugFailWord.includes(loadedName)) throw new Error('test: no word timing'); // tests only
+          const out = await asr(sub, { ...base, return_timestamps: 'word' });
           return { chunks: out.chunks, level: 'word' };
-        } catch {
-          // This model build can't give word times; use sentence times from here on.
-          wordLevelBroken = true;
+        } catch (err) {
+          // This build can't give word times here. Try the other build of the same model before
+          // settling for sentence times (which makes captions drift).
+          wordError = String((err && err.message) || err).slice(0, 160);
+          console.warn('word timing failed with', loadedName, err);
+          const others = (MODELS[quality] || MODELS.balanced).filter(n => n !== loadedName && !noWordTiming.has(n));
+          noWordTiming.add(loadedName);
+          post({ type: 'noWordTiming', name: loadedName });
+          if (!others.length) { wordLevelBroken = true; break; }
+          post({ type: 'status', text: 'Switching to a model with word-by-word timing…' });
+          try { asr && asr.dispose && await asr.dispose(); } catch { /* ignore */ }
+          asr = null; pending = null;
+          await load(quality);
         }
       }
-      const out = await run(sub, { ...base, return_timestamps: true });
+      const out = await asr(sub, { ...base, return_timestamps: true });
       return { chunks: out.chunks, level: 'segment' };
     };
     post({ type: 'status', text: 'Cleaning up background noise…' });
@@ -90,12 +105,14 @@ async function transcribe({ audio, quality, language, task }) {
       onWords: (words, i, total) => { if (total > 1) post({ type: 'partial', words: snapToSpeech(cleanWords(words), clean) }); },
     });
     res.words = snapToSpeech(cleanWords(res.words), clean);
+    if (res.level === 'segment' && wordError) res.wordError = wordError;
     post({ type: 'done', ...res });
   }
 }
 
 self.onmessage = async ({ data }) => {
   // Start downloading/loading the model while the user is still choosing languages.
+  for (const n of data.noWordTiming || []) noWordTiming.add(n); // remembered from earlier visits
   if (data.type === 'preload') { load(data.quality).catch(() => {}); return; }
   if (data.type !== 'transcribe') return;
   try {
