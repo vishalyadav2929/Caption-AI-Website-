@@ -5,6 +5,7 @@ import { detectTextLang, onlineTranslate, looksEnglish } from './translate.js';
 import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
+import { exportWebCodecs } from './export-webcodecs.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
 const $ = id => document.getElementById(id);
@@ -462,7 +463,9 @@ function getWorker() {
   return worker;
 }
 /** Download and load the speech model in the background while the user picks languages. */
-function preloadModel(quality) { try { getWorker().postMessage({ type: 'preload', quality }); } catch { /* not critical */ } }
+function preloadModel(quality) { try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList() }); } catch { /* not critical */ } }
+// Model builds that couldn't give word timing on this device before (so we don't retry them every time).
+function noWordList() { try { return JSON.parse(localStorage.getItem('vcz-noword')) || []; } catch { return []; } }
 // ---- audio extraction ----
 // 1) Decode the whole file at the browser's native rate (works for MP4/WebM/M4A in Chrome, Edge, Firefox).
 // 2) If the browser can't decode the container (e.g. iPhone .mov in Safari), play the video once,
@@ -491,7 +494,7 @@ function patchMovBrand(buf) {
   u.set([0x69, 0x73, 0x6f, 0x6d], 8); // 'isom'
   return u.buffer;
 }
-async function decodeBuffer(data) {
+async function decodeBuffer(data, raw = false) {
   const AC = window.AudioContext || window.webkitAudioContext;
   const ac = new AC();
   try {
@@ -499,6 +502,7 @@ async function decodeBuffer(data) {
       const p = ac.decodeAudioData(data, res, rej);
       if (p && p.then) p.then(res, rej);
     });
+    if (raw) return buf;
     const chans = [];
     for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
     return toMono16k(chans, buf.sampleRate);
@@ -614,12 +618,13 @@ async function transcribe({ lang, task, quality }, ui) {
         ui.onText(`Downloading speech model (one time)… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)}`); ui.onPct(pct);
       } else if (data.type === 'status') { ui.onText(data.text); }
       else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
+      else if (data.type === 'noWordTiming') { try { localStorage.setItem('vcz-noword', JSON.stringify([...new Set([...noWordList(), data.name])])); } catch { /* private mode */ } }
       else if (data.type === 'transcribe') {
         ui.onText(`Transcribing… part ${Math.min(data.done + 1, data.total)} of ${data.total}`); ui.onPct(data.done / data.total * 100);
       } else if (data.type === 'error') { busyGen = null; worker.terminate(); worker = null; reject(new Error(data.text)); }
       else if (data.type === 'done') { busyGen = null; resolve(data); }
     };
-    worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task }, [audio.buffer]);
+    worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task, noWordTiming: noWordList(), debugFailWord: window.__vczDebugFailWord }, [audio.buffer]);
   });
 }
 function cancelTranscribe() {
@@ -642,7 +647,7 @@ function applyTranscript(res, captionMode) {
 function describeResult(res) {
   const n = res.words.length;
   return `Done: ${n} words in ${S.segments.length} captions.` +
-    (res.level === 'segment' ? ' This model only gave sentence timing, so word-by-word highlights are estimated (marked “est.”).' : ' Word timing comes from the speech model.') +
+    (res.level === 'segment' ? ` Word-by-word timing wasn’t available on this device${res.wordError ? ` (${res.wordError})` : ''}, so it’s estimated from the voice (marked “est.”).` : ' Word timing comes from the speech model.') +
     ' Check the text, pick a template, then export.';
 }
 
@@ -980,8 +985,29 @@ async function exportVideo({ kind = 'video', size } = {}) {
   };
   let stopClock = null;
   try {
-    // Match the source: bitrate from the file (capped), frame rate from the decoded frames.
     const srcBps = S.file.size * 8 / dur;
+    // Best quality first: WebCodecs (H.264 at ≥ source bitrate, original audio copied as-is).
+    if (kind === 'video' && !window.__vczNoWebCodecs) {
+      const wc = await exportWebCodecs({
+        video, file: S.file, canvas: xcanvas, paint, dur, srcBps, job,
+        decodePcm: async () => { try { return await decodeBuffer(await S.file.arrayBuffer(), true); } catch { return null; } },
+        onProgress: (p, t) => {
+          $('exportBar').style.width = `${(p * 100).toFixed(1)}%`;
+          $('exportText').textContent = `${Math.round(p * 100)}% · ${fmt(t)} of ${fmt(dur)} · ${size.w}×${size.h} · original-quality MP4`;
+        },
+      }).catch(err => { console.warn('WebCodecs export failed, using MediaRecorder', err); return null; });
+      if (wc === 'cancelled' || job.cancelled) { status('Export cancelled.'); return; }
+      if (wc) {
+        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-captioned.mp4`;
+        download(wc, name);
+        status(`Exported “${name}” (${fmtBytes(wc.size)}, ${size.w}×${size.h}, original audio kept).`);
+        window.__vczLastExport = 'webcodecs';
+        return;
+      }
+      video.currentTime = 0;
+    }
+    window.__vczLastExport = 'mediarecorder';
+    // Match the source: bitrate from the file (capped), frame rate from the decoded frames.
     const k = (size.w * size.h) / ((video.videoWidth || size.w) * (video.videoHeight || size.h));
     const vbr = Math.round(Math.min(60e6, Math.max(4e6, srcBps * 1.15 * k)));
     const useRVFC = !overlay && !!video.requestVideoFrameCallback;

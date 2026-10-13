@@ -45,11 +45,11 @@ function findAsc(u, dv, from, to) {
 }
 
 /**
- * @param {ArrayBuffer} buf  the whole file
- * @returns {{ adts: Uint8Array, sampleRate: number, channels: number, frames: number }}
+ * The AAC audio track of an MP4 / MOV, as raw frames (no copying: views into `buf`).
+ * @returns {{ asc: Uint8Array, objectType, freqIndex, sampleRate, channels, frames: Uint8Array[] }}
  * Throws if the file has no AAC audio track.
  */
-export function extractAacAdts(buf) {
+export function readAacTrack(buf) {
   const u = new Uint8Array(buf), dv = new DataView(buf);
   const top = readBoxes(u, dv, 0, u.length);
   const moov = top.find(b => b.type === 'moov');
@@ -86,27 +86,42 @@ export function extractAacAdts(buf) {
     const runs = [];
     { const n = dv.getUint32(stsc.body + 4); for (let i = 0; i < n; i++) runs.push([dv.getUint32(stsc.body + 8 + i * 12), dv.getUint32(stsc.body + 12 + i * 12)]); }
 
-    const total = sizes.reduce((a, b) => a + b, 0) + 7 * count;
-    const adts = new Uint8Array(total);
-    let s = 0, w = 0;
+    const frames = [];
+    let s = 0;
     for (let c = 0; c < offsets.length && s < count; c++) {
       let per = runs[0][1];
       for (const [first, n] of runs) if (c + 1 >= first) per = n; else break;
       let o = offsets[c];
       for (let k = 0; k < per && s < count; k++, s++) {
-        const len = sizes[s] + 7;
         if (o + sizes[s] > u.length) throw new Error('truncated audio data');
-        adts[w] = 0xff; adts[w + 1] = 0xf1; // MPEG-4, no CRC
-        adts[w + 2] = ((objectType - 1) << 6) | (freqIndex << 2) | (channels >> 2);
-        adts[w + 3] = ((channels & 3) << 6) | (len >> 11);
-        adts[w + 4] = (len >> 3) & 0xff;
-        adts[w + 5] = ((len & 7) << 5) | 0x1f;
-        adts[w + 6] = 0xfc;
-        adts.set(u.subarray(o, o + sizes[s]), w + 7);
-        w += len; o += sizes[s];
+        frames.push(u.subarray(o, o + sizes[s]));
+        o += sizes[s];
       }
     }
-    return { adts: adts.subarray(0, w), sampleRate: RATES[freqIndex], channels, frames: s };
+    return { asc: asc.slice(), objectType, freqIndex, sampleRate: RATES[freqIndex], channels, frames };
   }
   throw new Error('no audio track');
+}
+
+/**
+ * @param {ArrayBuffer} buf  the whole file
+ * @returns {{ adts: Uint8Array, sampleRate: number, channels: number, frames: number }}
+ * Throws if the file has no AAC audio track.
+ */
+export function extractAacAdts(buf) {
+  const { objectType, freqIndex, channels, sampleRate, frames } = readAacTrack(buf);
+  const adts = new Uint8Array(frames.reduce((a, f) => a + f.length + 7, 0));
+  let w = 0;
+  for (const f of frames) {
+    const len = f.length + 7;
+    adts[w] = 0xff; adts[w + 1] = 0xf1; // MPEG-4, no CRC
+    adts[w + 2] = ((objectType - 1) << 6) | (freqIndex << 2) | (channels >> 2);
+    adts[w + 3] = ((channels & 3) << 6) | (len >> 11);
+    adts[w + 4] = (len >> 3) & 0xff;
+    adts[w + 5] = ((len & 7) << 5) | 0x1f;
+    adts[w + 6] = 0xfc;
+    adts.set(f, w + 7);
+    w += len;
+  }
+  return { adts, sampleRate, channels, frames: frames.length };
 }

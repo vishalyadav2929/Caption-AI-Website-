@@ -237,6 +237,28 @@ await step('export: video with burned-in captions at original resolution with or
   console.log('   video:', file.split('/').pop(), '|', streams.trim().replace(/\n/g, ' / '), '|', dur.toFixed(2), 's | header', fmtDur, '| audio', vol.trim(), '| caption px', yellow.trim());
 });
 
+await step('export (WebCodecs path): every frame encoded, original resolution, audio kept, captions burned in', async () => {
+  // This Chromium has no H.264 encoder, so let the WebCodecs path use VP9 for the test; on Safari/Chrome it's H.264.
+  await page.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
+  const { file, streams, dur } = await doExport('video', 0);
+  const used = await page.evaluate(() => window.__vczLastExport);
+  await page.evaluate(() => { delete window.__vczExportCodecs; });
+  assert.equal(used, 'webcodecs');
+  assert.ok(file.endsWith('.mp4'), file);
+  assert.match(streams, /video/); assert.match(streams, /audio/);
+  assert.match(streams, /540,960/, 'original resolution kept');
+  assert.ok(dur > 5.5 && dur < 6.6, `duration ${dur}`);
+  const srcFrames = +execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', join(FIX, 'portrait.webm')]).toString().trim();
+  const outFrames = +execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', file]).toString().trim();
+  assert.ok(outFrames >= srcFrames * 0.9, `frames: ${outFrames} of ${srcFrames}`);
+  const vol = execFileSync('sh', ['-c', `ffmpeg -i "${file}" -vn -af volumedetect -f null - 2>&1 | grep -o 'mean_volume: [-0-9.]*'`]).toString();
+  assert.ok(+vol.split(':')[1] > -35, `exported audio too quiet: ${vol}`);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', '1.2', '-i', file, '-frames:v', '1', join(OUT, 'export-wc-frame.png')]);
+  const yellow = execFileSync('sh', ['-c', `ffmpeg -v error -i "${join(OUT, 'export-wc-frame.png')}" -vf "crop=iw:ih*0.25:0:ih*0.68,format=rgb24" -f rawvideo - | od -An -tu1 -v -w3 | awk '$1>200 && $2>200 && $3<90' | wc -l`]).toString();
+  assert.ok(+yellow > 200, `caption pixels in exported frame: ${yellow.trim()}`);
+  console.log('   webcodecs:', file.split('/').pop(), '|', streams.trim().replace(/\n/g, ' / '), '| frames', outFrames, 'of', srcFrames, '| audio', vol.trim(), '| caption px', yellow.trim());
+});
+
 await step('export: captions only with a transparent background', async () => {
   const { file, streams, dur } = await doExport('alpha', 0);
   assert.match(streams, /540,960/);

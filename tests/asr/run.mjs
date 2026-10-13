@@ -42,7 +42,9 @@ const fileRoute = async (route, path) => { try { const b = await readFile(path);
 await ctx.route('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/**', r => fileRoute(r, join(TF, new URL(r.request().url()).pathname.split('/dist/')[1])));
 await ctx.route('https://huggingface.co/**', r => {
   const m = new URL(r.request().url()).pathname.match(/^\/([^/]+\/[^/]+)\/resolve\/[^/]+\/(.+)$/);
-  return fileRoute(r, m ? join(MODELS, m[1], m[2]) : '/nonexistent');
+  // Serve the same files for both builds, so the "switch build when word timing fails" path runs.
+  const model = m && m[1] === 'onnx-community/whisper-base_timestamped' ? 'Xenova/whisper-base' : m && m[1];
+  return fileRoute(r, m ? join(MODELS, model, m[2]) : '/nonexistent');
 });
 await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
 const page = await ctx.newPage();
@@ -51,6 +53,8 @@ page.on('console', m => { if (/error|warn/.test(m.type())) log.push(m.text().sli
 page.on('pageerror', e => log.push('PAGEERROR ' + e.message));
 await page.goto(`${BASE}/app.html`);
 await page.evaluate(() => localStorage.clear());
+// Pretend the first build can't give word timing on this "phone": the worker must switch builds, not fall back to estimates.
+await page.evaluate(() => { window.__vczDebugFailWord = ['onnx-community/whisper-base_timestamped']; });
 const t0 = Date.now();
 await page.setInputFiles('#startFile', video);
 await page.waitForSelector('#startPreview:not([hidden])');
@@ -94,6 +98,7 @@ console.log('STAGES:', statusLog.join(' | '));
 if (log.length) console.log('CONSOLE:', log.slice(0, 10).join('\n'));
 await browser.close(); server.close();
 assert.ok(result.matched / result.truth >= 0.9, `only ${result.matched} of ${result.truth} words recognized`);
+assert.equal(result.approx, false, 'word timing kept by switching model builds');
 assert.ok(+result.err_median <= 0.15, `median timing error ${result.err_median} s`);
 assert.ok(+result.err_p90 <= 0.4, `90% timing error ${result.err_p90} s`);
 assert.ok(segs[0].start >= OFF - 0.15, `first caption at ${segs[0].start} s, before the speech at ${OFF} s`);

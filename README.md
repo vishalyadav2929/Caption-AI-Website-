@@ -28,7 +28,7 @@ There's no account, payment or server. Everything runs in the visitor's browser.
   - Best for Hindi: `whisper-small`, ~250 MB
 
   Each tries the `onnx-community/*_timestamped` build (exported for word timestamps) first, then `Xenova/*`. The browser's Web Speech API is used only for Live mode, never for uploaded videos.
-- **Export:** Canvas + `MediaRecorder` + Web Audio. It works in Chrome, Edge, Firefox and Safari without a 30 MB FFmpeg.wasm download. The trade-off is that export runs in real time, so a 1-minute video takes about 1 minute. WebM duration is patched with [fix-webm-duration](https://github.com/yusitnikov/fix-webm-duration) (MIT, vendored in `site/js/vendor/`).
+- **Export:** WebCodecs first (Safari 16.4+, Chrome, Edge): every frame is encoded with the browser's H.264 encoder at ≥ 1.5× the source bitrate and the original AAC audio is copied into the MP4 unchanged, muxed with [mp4-muxer](https://github.com/Vanilagy/mp4-muxer) (MIT, vendored). If the device misses frames, playback slows down so none are lost. Fallback: Canvas + `MediaRecorder` + Web Audio (real time). WebM duration is patched with [fix-webm-duration](https://github.com/yusitnikov/fix-webm-duration) (MIT, vendored in `site/js/vendor/`).
 - **Fonts:** Google Fonts (open licences), with Noto fallbacks for Devanagari, Bengali, Gujarati, Gurmukhi, Tamil, Telugu, Kannada, Malayalam, Odia and Arabic.
 
 ## Formats
