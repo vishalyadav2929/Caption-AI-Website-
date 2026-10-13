@@ -474,7 +474,8 @@ async function preloadModel(quality) {
   try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList() }); } catch { /* not critical */ }
 }
 // Model builds that couldn't give word timing on this device before (so we don't retry them every time).
-function noWordList() { try { return JSON.parse(localStorage.getItem('vcz-noword')) || []; } catch { return []; } }
+const noWordMem = new Set(); // also kept in memory, for private browsing where storage fails
+function noWordList() { let saved = []; try { saved = JSON.parse(localStorage.getItem('vcz-noword')) || []; } catch { /* private mode */ } return [...new Set([...saved, ...noWordMem])]; }
 // ---- audio extraction ----
 // 1) Decode the whole file at the browser's native rate (works for MP4/WebM/M4A in Chrome, Edge, Firefox).
 // 2) If the browser can't decode the container (e.g. iPhone .mov in Safari), play the video once,
@@ -638,25 +639,44 @@ async function transcribe({ lang, task, quality }, ui) {
       S.cloudFailed = err.message;
     }
   }
+  // On-device. A second attempt (in a fresh worker) happens only if the first model build couldn't
+  // give word timing; the worker has then remembered to skip that build.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await runWorker(audio.slice(), { lang, task, quality }, ui);
+    } catch (err) {
+      if (err.switchBuild && attempt === 0) { ui.onReset && ui.onReset(); ui.onText('Switching to a model with word-by-word timing…'); continue; }
+      throw err;
+    }
+  }
+}
+// If the worker goes silent this long, the phone most likely killed it (out of memory).
+const WORKER_SILENCE_MS = 150000;
+function runWorker(audio, { lang, task, quality }, ui) {
   getWorker();
   return new Promise((resolve, reject) => {
-    busyGen = { reject };
+    let last = Date.now();
+    const fail = err => { clearInterval(watch); busyGen = null; if (worker) { worker.terminate(); worker = null; } reject(err); };
+    const watch = setInterval(() => {
+      if (Date.now() - last > WORKER_SILENCE_MS) fail(new Error('The speech model stopped responding. The phone may be low on memory: close other apps, or pick “Fast” quality under More options, and try again.'));
+    }, 5000);
+    busyGen = { reject: err => { clearInterval(watch); reject(err); } };
     worker.onerror = e => {
       // Usually the speech library couldn't be fetched (offline, firewall or an ad-blocker). Start fresh next time.
-      busyGen = null; worker.terminate(); worker = null;
-      reject(new Error(e.message && !/^Script error/.test(e.message) ? e.message : 'Couldn’t load the speech library from cdn.jsdelivr.net (offline, firewall or ad-blocker?).'));
+      fail(new Error(e.message && !/^Script error/.test(e.message) ? e.message : 'Couldn’t load the speech library from cdn.jsdelivr.net (offline, firewall or ad-blocker?).'));
     };
     worker.onmessage = ({ data }) => {
+      last = Date.now();
       if (data.type === 'download') {
         const pct = data.loaded / data.total * 100;
-        ui.onText(`Downloading speech model (one time)… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)}`); ui.onPct(pct);
+        ui.onText(`Loading speech model… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)} (downloaded only the first time)`); ui.onPct(pct);
       } else if (data.type === 'status') { ui.onText(data.text); }
       else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
-      else if (data.type === 'noWordTiming') { try { localStorage.setItem('vcz-noword', JSON.stringify([...new Set([...noWordList(), data.name])])); } catch { /* private mode */ } }
+      else if (data.type === 'noWordTiming') { noWordMem.add(data.name); try { localStorage.setItem('vcz-noword', JSON.stringify([...new Set([...noWordList(), data.name])])); } catch { /* private mode */ } }
       else if (data.type === 'transcribe') {
         ui.onText(`Transcribing… part ${Math.min(data.done + 1, data.total)} of ${data.total}`); ui.onPct(data.done / data.total * 100);
-      } else if (data.type === 'error') { busyGen = null; worker.terminate(); worker = null; reject(new Error(data.text)); }
-      else if (data.type === 'done') { busyGen = null; resolve(data); }
+      } else if (data.type === 'error') { fail(Object.assign(new Error(data.text), { switchBuild: data.switchBuild })); }
+      else if (data.type === 'done') { clearInterval(watch); busyGen = null; resolve(data); }
     };
     worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task, noWordTiming: noWordList(), debugFailWord: window.__vczDebugFailWord }, [audio.buffer]);
   });

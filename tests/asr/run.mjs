@@ -40,7 +40,9 @@ const ctx = await browser.newContext(vp === 'phone'
   : { viewport: { width: 1440, height: 900 } });
 const fileRoute = async (route, path) => { try { const b = await readFile(path); route.fulfill({ status: 200, body: b, headers: { 'content-type': T[extname(path)] || 'application/octet-stream', 'access-control-allow-origin': '*' } }); } catch { route.fulfill({ status: 404, body: 'nf', headers: { 'access-control-allow-origin': '*' } }); } };
 await ctx.route('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/**', r => fileRoute(r, join(TF, new URL(r.request().url()).pathname.split('/dist/')[1])));
+let hfHits = 0;
 await ctx.route('https://huggingface.co/**', r => {
+  hfHits++;
   const m = new URL(r.request().url()).pathname.match(/^\/([^/]+\/[^/]+)\/resolve\/[^/]+\/(.+)$/);
   // Serve the same files for both builds, so the "switch build when word timing fails" path runs.
   const model = m && m[1] === 'onnx-community/whisper-base_timestamped' ? 'Xenova/whisper-base' : m && m[1];
@@ -96,7 +98,31 @@ console.log(JSON.stringify(result));
 console.log('TEXT:', segs.map(s => `[${s.start.toFixed(2)}-${s.end.toFixed(2)}] ${s.words.map(w => w.text).join(' ')}`).join('\n'));
 console.log('STAGES:', statusLog.join(' | '));
 if (log.length) console.log('CONSOLE:', log.slice(0, 10).join('\n'));
+// Second visit: the app's service worker now controls the page, the model is cached, and the
+// build without word timing is remembered, so captions come straight from the right build.
+await page.evaluate(() => navigator.serviceWorker && navigator.serviceWorker.ready);
+const hitsBefore = hfHits;
+await page.reload();
+assert.ok(await page.evaluate(() => !!navigator.serviceWorker.controller), 'service worker controls the page');
+await page.setInputFiles('#startFile', video);
+await page.waitForSelector('#editor:not([hidden])', { timeout: 30000 }).catch(() => {});
+if (await page.isVisible('#startGo') && await page.isEnabled('#startGo')) await page.click('#startGo');
+const stages2 = [];
+const t2 = Date.now();
+for (;;) {
+  const st = await page.evaluate(() => ({ n: window.__vcz.S.segments.length, s: document.getElementById('status').textContent, ov: document.getElementById('genOvText').textContent, hid: document.getElementById('genOv').hidden }));
+  if (stages2.at(-1) !== st.ov) stages2.push(st.ov);
+  if (/Couldn’t|failed|No speech/i.test(st.s) || (st.n && st.hid)) break;
+  if (Date.now() - t2 > 300000) { stages2.push('TIMEOUT'); break; }
+  await page.waitForTimeout(250);
+}
+const n2 = await page.evaluate(() => window.__vcz.S.segments.flatMap(s => s.words).length);
+console.log('MODEL REQUESTS on second visit:', hfHits - hitsBefore);
+console.log('SECOND VISIT:', ((Date.now() - t2) / 1000).toFixed(1), 's,', n2, 'words |', stages2.join(' | '));
 await browser.close(); server.close();
+assert.ok(n2 >= 100, `second visit: ${n2} words`);
+assert.ok(!stages2.some(x => /Switching/.test(x)), 'second visit: no model switch');
+assert.equal(hfHits - hitsBefore, 0, 'second visit: model comes from the browser cache, nothing downloaded');
 assert.ok(result.matched / result.truth >= 0.9, `only ${result.matched} of ${result.truth} words recognized`);
 assert.equal(result.approx, false, 'word timing kept by switching model builds');
 assert.ok(+result.err_median <= 0.15, `median timing error ${result.err_median} s`);
