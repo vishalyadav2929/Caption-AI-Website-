@@ -103,8 +103,11 @@ function styleFont(s, px) {
   return fontString({ font: s.font, weight: s.weight, italic: s.italic }, px);
 }
 
-function textFor(text, s) {
+// Acronyms the speaker meant in capitals (AC, TV, UPI, OK) stay that way in Title and lower-case styles.
+const ACRONYM = /^[^\p{L}\p{N}]*[A-Z][A-Z0-9]+[^\p{L}\p{N}]*$/u;
+export function textFor(text, s) {
   if (s.upper) return text.toUpperCase();
+  if ((s.title || s.lower) && ACRONYM.test(text)) return text;
   if (s.title) return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
   if (s.lower) return text.toLowerCase();
   return text;

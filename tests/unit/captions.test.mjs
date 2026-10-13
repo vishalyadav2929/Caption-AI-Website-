@@ -126,3 +126,13 @@ test('applyTranslation shares translated words across the original captions and 
   // Shorter translation than captions: no empty captions.
   assert.ok(C.applyTranslation(segs, [0, 1, 2], 'hello').every(s => s.words.length));
 });
+
+test('title and lower-case styles keep acronyms like AC and UPI', async () => {
+  const { textFor } = await import('../../site/js/renderer.js');
+  assert.equal(textFor('AC', { title: true }), 'AC');
+  assert.equal(textFor('UPI,', { lower: true }), 'UPI,');
+  assert.equal(textFor('bhaiya,', { title: true }), 'Bhaiya,');
+  assert.equal(textFor('HELLO', { upper: true }), 'HELLO');
+  assert.equal(textFor('Raha', { lower: true }), 'raha');
+  assert.equal(textFor('I', { lower: true }), 'i');
+});
