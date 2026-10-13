@@ -13,7 +13,7 @@
 <body>
   <nav class="nav">
     <div class="wrap">
-      <a class="logo" href="index.html"><span class="logo-mark">VC</span>ViralCaption<b>Zone</b></a>
+      <a class="logo" href="index.html"><span class="logo-mark">VC</span><span>ViralCaption<b>Zone</b></span></a>
       <div class="nav-links">
         <a href="templates.html">Templates</a>
         <a href="#languages">Languages</a>
@@ -38,6 +38,12 @@
     </div>
   </header>
 
+  <section class="section wrap" id="showcase" hidden>
+    <h2>Made with <b class="grad-text">our captions</b></h2>
+    <p class="sub">Real videos with captions from this site. Tap one to use that style.</p>
+    <div class="ex-grid" id="exGrid"></div>
+  </section>
+
   <section class="section wrap" id="templates">
     <h2>Caption templates</h2>
     <p class="sub">Every style plays live below. Switch the language to see how it handles your script, then click a style to open it in the editor.</p>
@@ -45,6 +51,7 @@
     <div class="tabs" id="tabs"></div>
     <div class="grid-head">Every template · <span id="tplCount"></span></div>
     <div class="grid" id="grid"></div>
+    <button class="btn more-tpl" id="moreTpl" type="button">Show all templates</button>
   </section>
 
   <section class="section wrap">
@@ -90,6 +97,8 @@
   <script type="module">
     import { FONTS_URL, loadTemplateFonts } from './js/templates.js';
     import { mountGallery, mountPhone } from './js/gallery.js';
+    import { mountShowcase } from './js/showcase.js';
+    mountShowcase(document.getElementById('showcase'), document.getElementById('exGrid'));
     import { LANGUAGES } from './js/languages.js';
 
     document.getElementById('fonts').href = FONTS_URL;
@@ -111,6 +120,11 @@
         countEl: document.getElementById('tplCount'),
         onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
       });
+      // Phones show a dozen templates first; the rest on request (or as soon as a filter is used).
+      const sec = document.getElementById('templates');
+      const showAll = () => sec.classList.add('all');
+      document.getElementById('moreTpl').onclick = showAll;
+      document.getElementById('tabs').addEventListener('click', showAll);
     }
   </script>
 </body>

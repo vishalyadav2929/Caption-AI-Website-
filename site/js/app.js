@@ -230,7 +230,7 @@ function renderSegs() {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
     const d = document.createElement('p');
-    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
+    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
     p.appendChild(d);
     box.appendChild(p);
     return;
@@ -243,7 +243,7 @@ function renderSegs() {
     const top = document.createElement('div'); top.className = 'seg-top';
     const num = document.createElement('button'); num.className = 'seg-num'; num.textContent = i + 1;
     num.title = 'Play from here'; num.setAttribute('aria-label', `Caption ${i + 1}: jump to ${fmtT(seg.start)}`);
-    num.onclick = () => { S.selected = i; seekTo(seg.start); markSel(); };
+    num.onclick = () => { S.selected = i; seekTo(seg.start + Math.min(0.25, (seg.end - seg.start) / 3)); markSel(); };
     const tin = (val, which) => {
       const inp = document.createElement('input');
       inp.className = 't-in'; inp.value = fmtT(val); inp.inputMode = 'decimal';
@@ -391,7 +391,11 @@ function fitCanvas(w, h) {
   canvas.width = Math.round(w * k / 2) * 2;
   canvas.height = Math.round(h * k / 2) * 2;
 }
-$('fileIn').onchange = async e => { await loadFile(e.target.files[0]); e.target.value = ''; };
+$('fileIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (f && S.segments.length && !confirm('Use a different video? Your current captions will be removed.')) return;
+  await loadFile(f);
+};
 const box = $('box');
 ['dragenter', 'dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
@@ -436,10 +440,17 @@ const nudgeSize = d => {
 };
 $('szDown').onclick = () => nudgeSize(-0.1);
 $('szUp').onclick = () => nudgeSize(0.1);
+// Full screen. iPhone Safari can't make a page element full screen, so fill the window instead.
+const pseudoFs = on => { box.classList.toggle('pseudo-fs', on); document.body.classList.toggle('no-scroll', on); };
+const isFs = () => !!document.fullscreenElement || box.classList.contains('pseudo-fs');
 $('fsBtn').onclick = () => {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else if (box.requestFullscreen) box.requestFullscreen().catch(() => toast('Full screen isn’t available here.'));
+  if (box.requestFullscreen && document.fullscreenEnabled) box.requestFullscreen().catch(() => pseudoFs(true));
+  else pseudoFs(true);
 };
+$('fsExit').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else pseudoFs(false); };
+$('fsPlay').onclick = () => $('playBtn').click();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classList.contains('pseudo-fs')) pseudoFs(false); });
+window.__vczIsFs = isFs; window.__vczVideo = video; // tests
 
 // ---------- speech-to-text ----------
 let worker = null, busyGen = null;
@@ -750,6 +761,17 @@ function setMode(mode) {
   renderSegs(); syncActions();
 }
 $('modeFile').onclick = () => setMode('file');
+$('srtOut').onclick = () => { if (!S.segments.length) return toast('There are no captions yet.'); $('srtBtn').click(); };
+$('liveOpen').onclick = () => { setMode(S.mode === 'live' ? 'file' : 'live'); $('liveOpen').textContent = S.mode === 'live' ? 'Back to video' : 'Live captions'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// Phones: remember how tall the pinned preview is (so scrolled-to items land below it), and
+// un-pin it while typing so the keyboard leaves room for the text field.
+{
+  const stage = document.querySelector('.stage');
+  new ResizeObserver(() => document.documentElement.style.setProperty('--stage-h', `${stage.offsetHeight}px`)).observe(stage);
+  const typingField = el => el && el.matches && el.matches('aside textarea, aside input:not([type=checkbox]):not([type=range]):not([type=file])');
+  document.addEventListener('focusin', e => document.body.classList.toggle('typing', typingField(e.target)));
+  document.addEventListener('focusout', () => setTimeout(() => document.body.classList.toggle('typing', typingField(document.activeElement)), 50));
+}
 $('modeLive').onclick = () => setMode('live');
 
 $('camBtn').onclick = async () => {
@@ -1058,7 +1080,7 @@ $('trTarget').value = String(LANGUAGES.findIndex(l => l.whisper === 'english'));
 $('trNote').textContent = hasTranslator()
   ? 'Translates on your device with Chrome’s built-in translator. Timing is kept; word highlights inside each caption become estimated.'
   : 'Translates the caption text with the free MyMemory service (your video is never sent). Hindi ↔ Hinglish works offline. Timing is kept; word highlights become estimated.';
-$('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+$('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
 
 // The language the caption text is really in, judged from its script.
 function sourceLangCode() {
