@@ -151,7 +151,11 @@ const gallery = mountGallery({
 {
   const mq = window.matchMedia('(max-width: 1100px)');
   const home = $('grid').parentElement;
-  const place = () => (mq.matches ? $('mTpl') : home).appendChild($('grid'));
+  const place = () => {
+    (mq.matches ? $('mTpl') : home).appendChild($('grid'));
+    // The timeline would make the pinned preview too tall on phones: put it in the page flow below it.
+    if (mq.matches) $('main').after($('timeline')); else $('meta').before($('timeline'));
+  };
   if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
   place();
 }
