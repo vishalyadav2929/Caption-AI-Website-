@@ -7,6 +7,7 @@ import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
 import { exportWebCodecs } from './export-webcodecs.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
+import { mountTimeline, wavePeaks } from './timeline.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
@@ -303,6 +304,31 @@ video.addEventListener('seeked', refreshLookThumbs);
 video.addEventListener('loadeddata', refreshLookThumbs);
 
 // ---------- caption list ----------
+// ---------- timeline ----------
+// var: renderSegs can run before this line during start-up.
+var timeline = mountTimeline($('timeline'), {
+  segments: () => S.segments,
+  duration: () => (isFinite(video.duration) ? video.duration : 0),
+  time: () => video.currentTime || 0,
+  playing: () => !video.paused,
+  seek: t => seekTo(t),
+  show: t => transform(t),
+  wave: () => S.wave,
+  selectSeg: i => { S.selected = i; markSel(); },
+  pos: () => S.o.pos ?? baseTpl().pos ?? 0.72,
+  setPos: p => { S.o.pos = p; syncControls(); commit(); },
+  editWord: (si, wi, text) => {
+    const arr = JSON.parse(JSON.stringify(S.segments));
+    if (!text) arr[si].words.splice(wi, 1); else arr[si].words[wi].text = text;
+    setSegments(arr.filter(s => s.words.length));
+  },
+  deleteWord: (si, wi) => {
+    const arr = JSON.parse(JSON.stringify(S.segments));
+    arr[si].words.splice(wi, 1);
+    setSegments(arr.filter(s => s.words.length));
+  },
+});
+
 function setSegments(next, keepSel = true) {
   S.segments = C.normalize(next);
   if (!keepSel) S.selected = -1;
@@ -311,6 +337,8 @@ function setSegments(next, keepSel = true) {
 function seekTo(t) { if (S.mode === 'file' && video.src) video.currentTime = Math.max(0, t + 0.01); }
 
 function renderSegs() {
+  $('timeline').hidden = !S.file || S.mode !== 'file';
+  if (timeline && !$('timeline').hidden) timeline.render();
   const box = $('segs');
   box.innerHTML = '';
   S.active = -1;
@@ -483,6 +511,8 @@ async function loadFile(file) {
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
+  S.wave = null; timeline && timeline.reset();
+  S.audioP.then(a => { if (S.file === file) { S.wave = wavePeaks(a); timeline && timeline.render(); } }, () => {});
   S.segments = []; S.selected = -1;
   hist = []; hIdx = -1; commit();
   fitCanvas(video.videoWidth || 1080, video.videoHeight || 1920);
@@ -1446,6 +1476,7 @@ function loop() {
     $('time').textContent = `${fmt(t)} / ${fmt(video.duration)}`;
     if (!S.exporting && document.activeElement !== $('seek')) $('seek').value = Math.round(t / video.duration * 1000);
     highlightSeg(t);
+    timeline && !$('timeline').hidden && timeline.tick(t);
   }
   requestAnimationFrame(loop);
 }

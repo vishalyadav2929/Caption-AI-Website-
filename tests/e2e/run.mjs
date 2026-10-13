@@ -625,6 +625,51 @@ await step('colour grading: looks change the preview, .cube import, undo, and th
   await ctx.close();
 });
 
+await step('timeline: words, captions and waveform; click jumps, double-click edits, Delete removes, Top/Bottom moves captions', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.waitForTimeout(400);
+  const words = await m.locator('.tw').count();
+  assert.equal(words, await m.evaluate(() => window.__vcz.S.segments.reduce((n, s) => n + s.words.length, 0)));
+  assert.equal(await m.locator('.tc').count(), 3);
+  const lit = await m.evaluate(() => { const c = document.querySelector('.tl-wave'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
+  assert.ok(lit > 100, 'waveform drawn');
+  // Click the 5th word: the video jumps to it.
+  const w5 = await m.evaluate(() => window.__vcz.S.segments.flatMap(s => s.words)[4].start);
+  await m.locator('.tw').nth(4).click();
+  await m.waitForTimeout(200);
+  assert.ok(Math.abs(await m.evaluate(() => window.__vczVideo.currentTime) - w5) < 0.1);
+  // Double-click the first word and retype it.
+  await m.locator('.tw').first().dblclick();
+  await m.keyboard.type('THAT');
+  await m.keyboard.press('Enter');
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments[0].words[0].text), 'THAT');
+  // Select a word and delete it.
+  await m.locator('.tw').nth(1).click();
+  await m.keyboard.press('Delete');
+  assert.equal(await m.locator('.tw').count(), words - 1);
+  await m.click('#undoBtn');
+  assert.equal(await m.locator('.tw').count(), words, 'undo brings the word back');
+  // Position buttons.
+  await m.click('.tl-pos button:has-text("Top")');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.pos), 0.2);
+  assert.match(await m.getAttribute('.tl-pos button:has-text("Top")', 'class'), /on/);
+  await m.click('.tl-pos button:has-text("Bottom")');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.pos), 0.78);
+  // Click empty timeline: jump.
+  const box = await m.locator('.tl-inner').boundingBox();
+  await m.mouse.click(box.x + 5, box.y + 110);
+  assert.ok(await m.evaluate(() => window.__vczVideo.currentTime) < 0.5);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
