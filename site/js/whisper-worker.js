@@ -86,10 +86,9 @@ async function transcribe({ audio, quality, language, task, debugFailWord }) {
           noWordTiming.add(loadedName);
           post({ type: 'noWordTiming', name: loadedName });
           if (!others.length) { wordLevelBroken = true; break; }
-          post({ type: 'status', text: 'Switching to a model with word-by-word timing…' });
-          try { asr && asr.dispose && await asr.dispose(); } catch { /* ignore */ }
-          asr = null; pending = null;
-          await load(quality);
+          // Load the other build in a fresh worker: WebAssembly memory never shrinks, and loading a
+          // second model here can run a phone out of memory (the worker then dies without a word).
+          throw Object.assign(new Error('switch-build'), { switchBuild: true });
         }
       }
       const out = await asr(sub, { ...base, return_timestamps: true });
@@ -124,6 +123,6 @@ self.onmessage = async ({ data }) => {
       post({ type: 'status', text: 'GPU failed, retrying on CPU (slower)…' });
       try { await transcribe(data); return; } catch (e2) { err = e2; }
     }
-    post({ type: 'error', text: String((err && err.message) || err) });
+    post({ type: 'error', text: String((err && err.message) || err), switchBuild: !!(err && err.switchBuild) });
   }
 };
