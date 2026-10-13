@@ -498,6 +498,7 @@ function getWorker() {
 /** Download and load the speech model in the background while the user picks languages. */
 async function preloadModel(quality) {
   if (useCloud() && await cloudAvailable()) return; // Fast mode needs no download
+  if (!store.get()) return; // languages not chosen yet: the model to load isn't known, don't download one for nothing
   try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList(), cpuOnly: cpuOnly() }); } catch { /* not critical */ }
 }
 // Model builds that couldn't give word timing on this device before (so we don't retry them every time).
@@ -785,7 +786,11 @@ async function runGeneration({ lang, mode, quality }) {
       onText: t => { $('genOvText').textContent = t; },
       onPct: p => { $('genOvBar').style.width = p == null ? '0' : `${p}%`; },
     });
-    if (!applyTranscript(res, mode)) status('No speech was found in this video. You can add captions by hand.');
+    if (!applyTranscript(res, mode)) {
+      // Small on-device models often miss short or noisy Hindi. Say what will actually help.
+      const fast = !res.cloud && await cloudAvailable();
+      status(`The speech model couldn’t make out any words.${fast ? ' Turn on ⚡ Fast mode under More options and try again (it hears Hindi far better),' : ' Try “Best for Hindi” quality under More options,'} or tap “+ Add” and type the words; timing and styles still work.`);
+    }
     else status(describeResult(res));
     genUI(false);
     // Small models sometimes write English for Hindi (or Hinglish) speech. Turn it back into what was asked for.
@@ -1458,7 +1463,8 @@ const spokenCombo = combo($('spokenCombo'), 'Select a language', 'Search spoken 
   const l = it && it.lang;
   // Hindi is where the small model clearly beats base. Suggest it on computers (phones keep Balanced to save memory).
   const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
-  if (l && !isPhone) $('startModel').value = l.whisper === 'hindi' ? 'best' : 'balanced';
+  // Balanced everywhere by default: "Best" is a 250 MB download and very slow on ordinary laptops.
+  if (l) $('startModel').value = 'balanced';
   const own = l ? l.name.split(' — ')[0].replace(/ \(.*\)/, '') : '';
   const opts = !l ? [] : l.whisper === 'hindi'
     ? [{ id: 'native', label: 'Hindi' }, { id: 'hinglish', label: 'Hinglish (Roman Hindi)' }, { id: 'english', label: 'English' }]

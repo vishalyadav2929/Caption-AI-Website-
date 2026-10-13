@@ -112,3 +112,11 @@ test('planWindows keeps the first window short when asked', async () => {
   assert.equal(w.at(-1).end, a.length);
   assert.equal(planWindows(new Float32Array(16000 * 15), { firstMax: 12 }).length, 1, 'short clips stay one window');
 });
+
+test('chunksToWords drops words Whisper invents after the audio ends', async () => {
+  const { chunksToWords } = await import('../../site/js/asr-core.js');
+  // 5.2 s window starting at 0: a "word" at 10.46 s is in the padding and must go; ends are clamped.
+  const w = chunksToWords([{ text: 'ok', timestamp: [1, 1.4] }, { text: 'last', timestamp: [5.0, 6.0] }, { text: 'पह', timestamp: [10.46, 10.51] }], 'word', 0, 5.2);
+  assert.deepEqual(w.map(x => x.text), ['ok', 'last']);
+  assert.equal(w[1].end, 5.2);
+});

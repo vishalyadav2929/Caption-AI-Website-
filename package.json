@@ -8,7 +8,8 @@
     "start": "python3 -m http.server 8080 --directory site",
     "test": "node --test tests/unit/*.test.mjs",
     "test:e2e": "node tests/e2e/run.mjs",
-    "test:asr": "node tests/asr/run.mjs"
+    "test:asr": "node tests/asr/run.mjs",
+    "test:qa": "node tests/qa/user-flow.mjs"
   },
   "license": "UNLICENSED"
 }
