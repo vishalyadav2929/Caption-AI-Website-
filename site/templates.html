@@ -8,6 +8,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link id="fonts" rel="stylesheet">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#6d28d9">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ViralCaption">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ViralCaptionZone">
+  <meta property="og:title" content="All Templates — ViralCaptionZone">
+  <meta property="og:description" content="Every ViralCaptionZone caption style, playing live. Preview each one in English, Hindi and 9 more Indian languages, then open it in the free editor.">
+  <meta property="og:image" content="https://viralcaptionwala.netlify.app/icons/og.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/styles.css">
   <style>
     .tp { max-width: 1280px; margin: 0 auto; padding: 28px 20px 80px; }
@@ -48,5 +61,6 @@
       onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
     });
   </script>
+  <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 </body>
 </html>

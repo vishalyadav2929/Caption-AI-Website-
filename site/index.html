@@ -8,6 +8,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link id="fonts" rel="stylesheet">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#6d28d9">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ViralCaption">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ViralCaptionZone">
+  <meta property="og:title" content="ViralCaptionZone — Free Viral Captions in Hindi, Hinglish & 30+ Languages">
+  <meta property="og:description" content="Free AI caption generator for Reels, Shorts and Pins. Viral Instagram & Pinterest typography, live captions, Hindi, Hinglish, English and 30+ languages. Runs in your browser.">
+  <meta property="og:image" content="https://viralcaptionwala.netlify.app/icons/og.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -107,19 +120,24 @@
       const s = document.createElement('span'); s.textContent = l.name; langs.appendChild(s);
     });
 
-    // Render immediately; the canvases redraw every frame, so fonts swap in as they arrive.
-    loadTemplateFonts();
+    // The hero renders right away; fonts swap in as they arrive. Everything below the fold
+    // (85 live previews and every template font) waits until the page has finished loading.
+    const whenIdle = fn => {
+      const go = () => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 300));
+      document.readyState === 'complete' ? go() : addEventListener('load', go, { once: true });
+    };
+    whenIdle(loadTemplateFonts);
     {
       mountPhone(document.getElementById('ph1'), 'viral-pop', 'stop scrolling this will change how you edit', 280);
       mountPhone(document.getElementById('ph2'), 'desi-bold', 'भाई ये ट्रिक सच में काम करती है', 20);
       mountPhone(document.getElementById('ph3'), 'aesthetic-serif', 'slow mornings and soft light are my favourite', 330);
-      mountGallery({
+      whenIdle(() => mountGallery({
         tabsEl: document.getElementById('tabs'),
         gridEl: document.getElementById('grid'),
         langEl: document.getElementById('langTabs'),
         countEl: document.getElementById('tplCount'),
         onSelect: tpl => { location.href = 'app.html?t=' + encodeURIComponent(tpl.id); },
-      });
+      }));
       // Phones show a dozen templates first; the rest on request (or as soon as a filter is used).
       const sec = document.getElementById('templates');
       const showAll = () => sec.classList.add('all');
@@ -127,5 +145,6 @@
       document.getElementById('tabs').addEventListener('click', showAll);
     }
   </script>
+  <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 </body>
 </html>

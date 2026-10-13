@@ -6,6 +6,7 @@ import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
 import { exportWebCodecs } from './export-webcodecs.js';
+import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
 const $ = id => document.getElementById(id);
@@ -454,6 +455,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classL
 window.__vczIsFs = isFs; window.__vczVideo = video; // tests
 
 // ---------- speech-to-text ----------
+// Fast mode switch: shown only when the site owner has set it up; the visitor's choice is remembered.
+const useCloud = () => !window.__vczNoCloud && $('cloudMode').checked;
+try { if (localStorage.getItem('vcz-cloud') === 'off') $('cloudMode').checked = false; } catch { /* private mode */ }
+$('cloudMode').onchange = e => { try { localStorage.setItem('vcz-cloud', e.target.checked ? 'on' : 'off'); } catch { /* ignore */ } };
+cloudAvailable().then(on => { $('cloudRow').hidden = !on; });
 let worker = null, busyGen = null;
 function getWorker() {
   if (!worker) {
@@ -463,7 +469,10 @@ function getWorker() {
   return worker;
 }
 /** Download and load the speech model in the background while the user picks languages. */
-function preloadModel(quality) { try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList() }); } catch { /* not critical */ } }
+async function preloadModel(quality) {
+  if (useCloud() && await cloudAvailable()) return; // Fast mode needs no download
+  try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList() }); } catch { /* not critical */ }
+}
 // Model builds that couldn't give word timing on this device before (so we don't retry them every time).
 function noWordList() { try { return JSON.parse(localStorage.getItem('vcz-noword')) || []; } catch { return []; } }
 // ---- audio extraction ----
@@ -604,6 +613,31 @@ async function transcribe({ lang, task, quality }, ui) {
   let peak = 0;
   for (let i = 0; i < audio.length; i += 50) peak = Math.max(peak, Math.abs(audio[i]));
   if (!audio.length || peak < 0.002) throw new Error('This video seems to have no sound, so there is nothing to transcribe.');
+  // Fast mode (only if the site owner set it up and the visitor didn't switch it off).
+  if (useCloud() && await cloudAvailable()) {
+    const ctrl = new AbortController();
+    let cancelled = false;
+    try {
+      ui.onText('⚡ Fast mode: listening…'); ui.onPct(5);
+      const job = cloudTranscribe(audio, {
+        lang: lang.whisper ? lang.bcp.split('-')[0] : null, task, signal: ctrl.signal, onWords: ui.onWords,
+        onProgress: (d, t) => { ui.onText(`⚡ Fast mode… ${d} of ${t}`); ui.onPct(d / t * 100); },
+      });
+      const res = await new Promise((resolve, reject) => {
+        busyGen = { reject, abort: () => { cancelled = true; ctrl.abort(); reject(new Error('cancelled')); } };
+        job.then(resolve, reject);
+      });
+      busyGen = null;
+      return { ...res, cloud: true };
+    } catch (err) {
+      busyGen = null;
+      if (cancelled || err.message === 'cancelled') throw new Error('cancelled');
+      console.warn('Fast mode failed, using on-device captions', err);
+      ui.onReset && ui.onReset();
+      ui.onText(err.message === 'busy' ? 'Fast mode is busy right now, so captions are made on your device…' : 'Fast mode isn’t reachable, so captions are made on your device…');
+      S.cloudFailed = err.message;
+    }
+  }
   getWorker();
   return new Promise((resolve, reject) => {
     busyGen = { reject };
@@ -630,7 +664,8 @@ async function transcribe({ lang, task, quality }, ui) {
 function cancelTranscribe() {
   if (realtimeJob) { realtimeJob.cancelled = true; return; }
   if (!busyGen) return;
-  worker.terminate(); worker = null;
+  if (busyGen.abort) busyGen.abort();
+  else if (worker) { worker.terminate(); worker = null; }
   const r = busyGen.reject; busyGen = null;
   r(new Error('cancelled'));
 }
@@ -646,7 +681,7 @@ function applyTranscript(res, captionMode) {
 }
 function describeResult(res) {
   const n = res.words.length;
-  return `Done: ${n} words in ${S.segments.length} captions.` +
+  return `Done: ${n} words in ${S.segments.length} captions${res.cloud ? ' (⚡ Fast mode)' : ''}.` +
     (res.level === 'segment' ? ` Word-by-word timing wasn’t available on this device${res.wordError ? ` (${res.wordError})` : ''}, so it’s estimated from the voice (marked “est.”).` : ' Word timing comes from the speech model.') +
     ' Check the text, pick a template, then export.';
 }
@@ -674,6 +709,7 @@ async function runGeneration({ lang, mode, quality }) {
     const soFar = [];
     S.hinglish = mode === 'hinglish';
     const res = await transcribe({ lang, task, quality }, {
+      onReset: () => { soFar.length = 0; S.segments = []; renderSegs(); },
       onWords: words => {
         soFar.push(...words);
         S.segments = C.segmentsFromWords(soFar, wordsPerCaption(), 32);

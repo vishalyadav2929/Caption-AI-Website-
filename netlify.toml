@@ -1,7 +1,8 @@
-# ViralCaptionZone is a static site: no build step, no server, no environment variables.
+# ViralCaptionZone is a static site with one optional function (Fast mode, off until GROQ_API_KEY is set).
 [build]
   publish = "site"
   command = "echo 'Static site, nothing to build'"
+  functions = "netlify/functions"
 
 [[headers]]
   for = "/*"
@@ -20,3 +21,13 @@
   for = "/css/*"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# The service worker must always be fresh, or updates would be held back.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"

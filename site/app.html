@@ -8,6 +8,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link id="fonts" rel="stylesheet">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#6d28d9">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ViralCaption">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ViralCaptionZone">
+  <meta property="og:title" content="ViralCaptionZone Editor — Free Video Captions">
+  <meta property="og:description" content="Add viral animated captions to your videos for free. Hindi, Hinglish, English and 30+ languages. Live captions and upload.">
+  <meta property="og:image" content="https://viralcaptionwala.netlify.app/icons/og.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -175,6 +188,7 @@
               </select>
             </div>
             <label class="check field"><input type="checkbox" id="translate"> Translate captions to English</label>
+            <label class="check field" id="cloudRow" hidden><input type="checkbox" id="cloudMode" checked> ⚡ Fast mode: captions in seconds and better Hindi. Sends the audio (never the video) to our speech server.</label>
             <div class="row">
               <button class="btn btn-primary" id="genBtn" disabled>Generate captions</button>
               <button class="btn" id="genCancel" hidden>Cancel</button>
@@ -266,5 +280,6 @@
   <div class="toast" id="toast"></div>
 
   <script type="module" src="js/app.js"></script>
+  <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 </body>
 </html>

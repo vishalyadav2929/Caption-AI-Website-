@@ -414,3 +414,5 @@ body.no-scroll .nav { visibility: hidden; }
 .ex:hover canvas { transform: translateY(-2px); }
 .ex span { display: block; padding: 6px 2px 0; }
 @media (max-width: 640px) { .ex-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+/* Reserve room for template grids that fill in after load, so the footer does not jump */
+#grid:empty, #exGrid:empty { min-height: 100vh; }
