@@ -708,6 +708,25 @@ await step('sound effects: add from the menu, auto pop on captions, delete, and 
   await ctx.close();
 });
 
+await step('phones: timeline sits below the pinned preview and its buttons can be tapped (iPhone SE, Android, iPad)', async () => {
+  for (const [w, h] of [[375, 667], [360, 740], [412, 915], [820, 1180]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    const m = await ctx.newPage();
+    await m.goto(`${BASE}/app.html`);
+    await m.click('#startSkip');
+    await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+    await m.waitForSelector('#timeline:not([hidden])');
+    assert.equal(await m.evaluate(() => !!document.getElementById('timeline').closest('.stage')), false, `${w}x${h}: timeline not inside the pinned preview`);
+    await m.locator('.tl-add').scrollIntoViewIfNeeded();
+    await m.click('.tl-add');
+    assert.equal(await m.isVisible('.tl-menu'), true, `${w}x${h}: sound menu opens`);
+    const pinned = await m.evaluate(() => document.querySelector('.stage').getBoundingClientRect().height / innerHeight);
+    assert.ok(pinned < 0.68, `${w}x${h}: pinned preview takes ${(pinned * 100).toFixed(0)}% of the screen`);
+    assert.equal(await m.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0, `${w}x${h}: no sideways scroll`);
+    await ctx.close();
+  }
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
