@@ -549,6 +549,27 @@ await step('installable app: manifest, icons, service worker, opens offline', as
   await ctx.close();
 });
 
+await step('home: live demo plays the manifest clip and switches caption style on tap', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  await m.route('**/examples/manifest.json', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], demo: { video: 'demo.webm', captions: 'demo.srt' } }) }));
+  await m.route('**/examples/demo.webm', async r => r.fulfill({ contentType: 'video/webm', body: await readFile(join(FIX, 'portrait.webm')) }));
+  await m.route('**/examples/demo.srt', async r => r.fulfill({ contentType: 'text/plain', body: await readFile(join(FIX, 'sample.srt')) }));
+  await m.goto(`${BASE}/index.html`);
+  await m.locator('#demo').scrollIntoViewIfNeeded();
+  await m.waitForSelector('.demo-style');
+  assert.ok(await m.locator('.demo-style').count() >= 8);
+  assert.equal(await m.isVisible('#demoPlay'), true, 'play/mute shown when a clip exists');
+  await m.waitForTimeout(1500);
+  const shot = () => m.locator('#demoCap').screenshot();
+  const a = await shot();
+  await m.locator('.demo-style').nth(1).click();
+  assert.match(await m.getAttribute('.demo-style >> nth=1', 'class'), /\bon\b/);
+  await m.waitForTimeout(300);
+  assert.notDeepEqual(a, await shot(), 'captioned side changes');
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

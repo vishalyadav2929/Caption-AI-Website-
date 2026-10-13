@@ -23,33 +23,56 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
-  <nav class="nav">
+<body class="home">
+  <nav class="nav nav-float">
     <div class="wrap">
       <a class="logo" href="index.html"><span class="logo-mark">VC</span><span>ViralCaption<b>Zone</b></span></a>
       <div class="nav-links">
+        <a href="#demo">Demo</a>
         <a href="templates.html">Templates</a>
-        <a href="#languages">Languages</a>
-        <a href="#how">How it works</a>
+        <a href="#free">Pricing</a>
+        <a href="#faq">FAQ</a>
       </div>
-      <a class="btn btn-primary btn-sm" href="app.html">Open editor — free</a>
+      <a class="btn btn-primary btn-sm" href="app.html">Start free</a>
     </div>
   </nav>
 
-  <header class="hero wrap">
-    <span class="badge">100% free · no sign-up · runs in your browser</span>
-    <h1>Viral captions for your Reels,<br><span class="g">in every language.</span></h1>
-    <p>Auto-captions in Hindi, Hinglish, English and 30+ languages, with Instagram and Pinterest styles. Add captions live while you record, or upload a video and export it with captions burned in.</p>
-    <div class="hero-cta">
-      <a class="btn btn-primary" href="app.html">Upload a video</a>
-      <a class="btn" href="app.html#live">Go live with captions</a>
-    </div>
-    <div class="hero-demo">
-      <div class="phone"><canvas id="ph1"></canvas></div>
-      <div class="phone"><canvas id="ph2"></canvas></div>
-      <div class="phone"><canvas id="ph3"></canvas></div>
+  <header class="hero2">
+    <div class="wrap">
+      <span class="badge">₹0 forever · no sign-up · no watermark</span>
+      <h1>Add <span class="g">viral AI captions</span> to your Reels</h1>
+      <p>Upload a video and get word-by-word captions in Hindi, Hinglish, English and 30+ languages. Tap a style, export in original quality.</p>
+      <ul class="checks">
+        <li>Auto speech-to-text</li>
+        <li>85+ viral templates</li>
+        <li>Word-by-word highlight</li>
+        <li>Hindi ⇄ Hinglish</li>
+        <li>Original-quality export</li>
+      </ul>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="app.html">Get started free →</a>
+        <a class="btn btn-lg" href="#demo">See it in action</a>
+      </div>
     </div>
   </header>
+
+  <section class="section wrap demo" id="demo">
+    <span class="kicker">Live demo</span>
+    <h2>See it <span class="grad-text">in action</span></h2>
+    <p class="sub">Pick a style below and watch the captions change on the video, exactly as they will in the editor and in your export.</p>
+    <div class="demo-pair">
+      <figure><figcaption class="pill">Original</figcaption><div class="phone"><canvas id="demoOrig"></canvas></div></figure>
+      <figure><figcaption class="pill on">With captions</figcaption>
+        <div class="phone"><canvas id="demoCap"></canvas>
+          <div class="demo-ctl"><button type="button" id="demoPlay" aria-label="Play or pause" hidden>❚❚</button><button type="button" id="demoMute" aria-label="Sound on or off" hidden>🔇</button></div>
+        </div>
+      </figure>
+    </div>
+    <h3 class="demo-h">Caption style</h3>
+    <div class="demo-styles" id="demoStyles"></div>
+    <p class="sub small">In the editor you control everything: size, position (drag it on the video), colours, fonts and words per caption.</p>
+    <div class="center"><a class="btn btn-primary" href="templates.html">See all templates</a></div>
+  </section>
 
   <section class="section wrap" id="showcase" hidden>
     <h2>Made with <b class="grad-text">our captions</b></h2>
@@ -57,9 +80,20 @@
     <div class="ex-grid" id="exGrid"></div>
   </section>
 
+  <section class="section wrap" id="how">
+    <span class="kicker">3 steps</span>
+    <h2>From raw clip to captioned Reel</h2>
+    <div class="steps">
+      <div class="step"><b>1</b><h3>Upload</h3><p>Pick a video from your phone or computer. Choose the language you speak in.</p></div>
+      <div class="step"><b>2</b><h3>Tap a style</h3><p>Captions appear word by word. Tap any template and the video changes instantly. Fix any word.</p></div>
+      <div class="step"><b>3</b><h3>Export</h3><p>Download in original quality with the original sound, or as transparent / green-screen captions for CapCut.</p></div>
+    </div>
+  </section>
+
   <section class="section wrap" id="templates">
-    <h2>Caption templates</h2>
-    <p class="sub">Every style plays live below. Switch the language to see how it handles your script, then click a style to open it in the editor.</p>
+    <span class="kicker">Templates</span>
+    <h2>85+ caption styles</h2>
+    <p class="sub">Every style plays live. Switch the language to see your script, then tap a style to open it in the editor.</p>
     <div class="tabs" id="langTabs" aria-label="Preview language"></div>
     <div class="tabs" id="tabs"></div>
     <div class="grid-head">Every template · <span id="tplCount"></span></div>
@@ -67,33 +101,44 @@
     <button class="btn more-tpl" id="moreTpl" type="button">Show all templates</button>
   </section>
 
-  <section class="section wrap">
-    <h2>Built for Indian creators. Works for everyone.</h2>
-    <p class="sub">Speech-to-text runs on your own device, so it stays free and your videos never leave your computer.</p>
-    <div class="features">
-      <div class="feature"><div class="ic">⚡</div><h3>Live captions</h3><p>Turn on your camera and captions appear as you speak. Record the result straight to a video file.</p></div>
-      <div class="feature"><div class="ic">🎬</div><h3>Upload &amp; auto-caption</h3><p>Drop in a video and AI writes word-by-word timed captions. Edit any line, then export.</p></div>
-      <div class="feature"><div class="ic">🇮🇳</div><h3>Hindi &amp; Hinglish</h3><p>Captions in Devanagari, or switched to Roman Hinglish the way people type on Instagram.</p></div>
-      <div class="feature"><div class="ic">🎨</div><h3>Viral typography</h3><p>Word highlights, pop and bounce animations, neon glow, karaoke fill. Change colors, size and position.</p></div>
-      <div class="feature"><div class="ic">🔒</div><h3>Private by design</h3><p>No uploads to any server. The AI model downloads once, then works offline.</p></div>
-      <div class="feature"><div class="ic">📄</div><h3>SRT in &amp; out</h3><p>Import an existing subtitle file or export SRT for YouTube, Premiere or CapCut.</p></div>
+  <section class="section wrap" id="free">
+    <span class="kicker">Pricing</span>
+    <h2>Simple pricing: <span class="grad-text">free</span></h2>
+    <p class="sub">No tokens, no credits, no subscription. Make as many Reels as you want.</p>
+    <div class="price">
+      <div class="price-card">
+        <h3>Free</h3>
+        <div class="amt">₹0 <small>forever</small></div>
+        <ul class="ticks">
+          <li><b>Unlimited</b> videos and exports</li>
+          <li>No sign-up, no watermark</li>
+          <li>All 85+ templates</li>
+          <li>Hindi, Hinglish, English + 30 languages</li>
+          <li>Original-quality MP4, transparent and green-screen export</li>
+          <li>Translate captions, SRT in and out</li>
+        </ul>
+        <a class="btn btn-primary btn-lg" href="app.html">Start captioning →</a>
+      </div>
     </div>
   </section>
 
   <section class="section wrap" id="languages">
-    <h2>30+ languages</h2>
-    <p class="sub">Every language works on uploaded videos. Live captions use your browser's speech recognition, which works best in Chrome and Edge.</p>
+    <span class="kicker">Languages</span>
+    <h2>30+ languages, Hinglish included</h2>
+    <p class="sub">Captions in Devanagari, or in Roman Hinglish the way people type on Instagram. Translate to any language later.</p>
     <div class="lang-cloud" id="langs"></div>
   </section>
 
-  <section class="section wrap" id="how">
-    <h2>How it works</h2>
-    <p class="sub">From raw clip to captioned Reel in about a minute.</p>
-    <div class="steps">
-      <div class="step"><h3>Upload or go live</h3><p>Drop a video, or switch to Live mode to caption while you record.</p></div>
-      <div class="step"><h3>Generate captions</h3><p>Choose a language and AI transcribes with word-level timing.</p></div>
-      <div class="step"><h3>Pick a style</h3><p>Choose a template, then tweak colors, size and position.</p></div>
-      <div class="step"><h3>Export</h3><p>Download the video with captions burned in, or an SRT file.</p></div>
+  <section class="section wrap" id="faq">
+    <span class="kicker">FAQ</span>
+    <h2>Questions</h2>
+    <div class="faq">
+      <details><summary>Is it really free?</summary><p>Yes. There are no tokens or credits and no watermark. The site runs in your browser, so there's no per-video cost to pass on.</p></details>
+      <details><summary>Does my video get uploaded anywhere?</summary><p>No. Your video stays on your phone or computer. If Fast mode is on, only the audio is sent to our speech server to turn it into text, and you can switch Fast mode off under More options. See <a href="privacy.html">Privacy</a>.</p></details>
+      <details><summary>Will the export lose quality?</summary><p>No. Exports keep your video's resolution, use a bitrate at least as high as the original, and copy the original sound unchanged.</p></details>
+      <details><summary>Can I get Hinglish (Hindi in English letters)?</summary><p>Yes. Choose Hinglish as the caption language, or switch any Hindi captions to Hinglish with one tap.</p></details>
+      <details><summary>Does it work on iPhone?</summary><p>Yes, in Safari. You can also add it to your Home Screen (Share → Add to Home Screen) and open it like an app.</p></details>
+      <details><summary>Can I use the captions in CapCut or InShot?</summary><p>Yes. Export "transparent" or "green screen" captions and lay them over your video, or download an SRT file.</p></details>
     </div>
   </section>
 
@@ -101,7 +146,7 @@
     <div class="cta-band">
       <h2>Make your next Reel stand out</h2>
       <p class="sub">Free forever. No watermark, no account.</p>
-      <a class="btn btn-primary" href="app.html">Start captioning</a>
+      <a class="btn btn-primary btn-lg" href="app.html">Get started free →</a>
     </div>
   </section>
 
@@ -109,7 +154,8 @@
 
   <script type="module">
     import { FONTS_URL, loadTemplateFonts } from './js/templates.js';
-    import { mountGallery, mountPhone } from './js/gallery.js';
+    import { mountGallery } from './js/gallery.js';
+    import { mountDemo } from './js/demo.js';
     import { mountShowcase } from './js/showcase.js';
     mountShowcase(document.getElementById('showcase'), document.getElementById('exGrid'));
     import { LANGUAGES } from './js/languages.js';
@@ -128,9 +174,7 @@
     };
     whenIdle(loadTemplateFonts);
     {
-      mountPhone(document.getElementById('ph1'), 'viral-pop', 'stop scrolling this will change how you edit', 280);
-      mountPhone(document.getElementById('ph2'), 'desi-bold', 'भाई ये ट्रिक सच में काम करती है', 20);
-      mountPhone(document.getElementById('ph3'), 'aesthetic-serif', 'slow mornings and soft light are my favourite', 330);
+      mountDemo({ orig: document.getElementById('demoOrig'), cap: document.getElementById('demoCap'), styles: document.getElementById('demoStyles'), playBtn: document.getElementById('demoPlay'), muteBtn: document.getElementById('demoMute') });
       whenIdle(() => mountGallery({
         tabsEl: document.getElementById('tabs'),
         gridEl: document.getElementById('grid'),

@@ -13,7 +13,7 @@ function sampleChunks(tpl, lang = 'en') {
 }
 
 // A soft, moving bokeh backdrop for styles meant to sit over footage.
-function paintScene(ctx, W, H, t) {
+export function paintScene(ctx, W, H, t) {
   const g = ctx.createLinearGradient(0, 0, W, H);
   g.addColorStop(0, '#3a2a22'); g.addColorStop(0.5, '#6b4e3a'); g.addColorStop(1, '#1d1612');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
