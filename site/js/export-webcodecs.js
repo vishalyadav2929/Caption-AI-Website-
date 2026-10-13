@@ -26,8 +26,8 @@ async function pickVideoConfig(width, height, bitrate, framerate) {
 }
 
 /** Audio for the MP4: the source's own AAC frames if it has them, otherwise re-encoded from PCM. */
-async function prepareAudio(file, decodePcm) {
-  try {
+async function prepareAudio(file, decodePcm, mustEncode) {
+  if (!mustEncode) try {
     const t = readAacTrack(await file.arrayBuffer());
     if (t.frames.length) return { kind: 'copy', ...t };
   } catch { /* not an MP4/MOV with AAC */ }
@@ -54,7 +54,7 @@ async function prepareAudio(file, decodePcm) {
  *   decodePcm()  → Promise<AudioBuffer|null>, used only when the file has no AAC track
  * @returns {Promise<Blob|null>} null when this browser can't do it (caller falls back to MediaRecorder)
  */
-export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps, job, onProgress, decodePcm }) {
+export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps, job, onProgress, decodePcm, mixAudio = false }) {
   if (!canUseWebCodecs()) return null;
   const { width, height } = canvas;
   const fps = 30;
@@ -62,7 +62,7 @@ export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps,
   const bitrate = Math.round(Math.min(80e6, Math.max(srcBps * 1.5, width * height * fps * 0.15, 4e6)));
   const vconf = await pickVideoConfig(width, height, bitrate, fps);
   if (!vconf) return null;
-  const audio = await prepareAudio(file, decodePcm);
+  const audio = await prepareAudio(file, decodePcm, mixAudio);
   if (!audio) return null;
 
   const vcodec = vconf.codec.startsWith('avc1') ? 'avc' : vconf.codec.startsWith('vp09') ? 'vp9' : 'av1';

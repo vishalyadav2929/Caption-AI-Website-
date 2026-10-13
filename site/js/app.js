@@ -7,6 +7,8 @@ import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
 import { exportWebCodecs } from './export-webcodecs.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
+import { mountTimeline, wavePeaks } from './timeline.js';
+import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
@@ -303,6 +305,63 @@ video.addEventListener('seeked', refreshLookThumbs);
 video.addEventListener('loadeddata', refreshLookThumbs);
 
 // ---------- caption list ----------
+// ---------- timeline ----------
+// var: renderSegs can run before this line during start-up.
+var timeline = mountTimeline($('timeline'), {
+  segments: () => S.segments,
+  duration: () => (isFinite(video.duration) ? video.duration : 0),
+  time: () => video.currentTime || 0,
+  playing: () => !video.paused,
+  seek: t => seekTo(t),
+  show: t => transform(t),
+  wave: () => S.wave,
+  selectSeg: i => { S.selected = i; markSel(); },
+  pos: () => S.o.pos ?? baseTpl().pos ?? 0.72,
+  setPos: p => { S.o.pos = p; syncControls(); commit(); },
+  editWord: (si, wi, text) => {
+    const arr = JSON.parse(JSON.stringify(S.segments));
+    if (!text) arr[si].words.splice(wi, 1); else arr[si].words[wi].text = text;
+    setSegments(arr.filter(s => s.words.length));
+  },
+  sounds: SOUNDS,
+  soundList: () => allSounds(),
+  previewSound: id => playSound(id, 0),
+  addSound: id => { S.o.sfx = [...(S.o.sfx || []), { t: +(video.currentTime || 0).toFixed(2), id, vol: 0.8 }]; commit(); timeline.render(); playSound(id, 0); },
+  deleteSound: i => { S.o.sfx = (S.o.sfx || []).filter((_, k) => k !== i); commit(); timeline.render(); },
+  autoSound: () => S.o.sfxAuto || null,
+  setAutoSound: id => { S.o.sfxAuto = id; commit(); timeline.render(); },
+  deleteWord: (si, wi) => {
+    const arr = JSON.parse(JSON.stringify(S.segments));
+    arr[si].words.splice(wi, 1);
+    setSegments(arr.filter(s => s.words.length));
+  },
+});
+
+// ---------- sound effects ----------
+/** Hand-placed sounds (with their index) plus the automatic one on every caption. */
+function allSounds() {
+  const list = (S.o.sfx || []).map((s, index) => ({ ...s, index }));
+  if (S.o.sfxAuto) for (const seg of S.segments) list.push({ t: seg.start, id: S.o.sfxAuto, vol: 0.6, auto: true });
+  return list.sort((a, b) => a.t - b.t);
+}
+async function playSound(id, vol = 0.8) {
+  try {
+    ensureAudioGraph(); await audioCtx.resume();
+    const src = audioCtx.createBufferSource(); src.buffer = await soundBuffer(id, audioCtx.sampleRate);
+    const g = audioCtx.createGain(); g.gain.value = vol || 0.8;
+    src.connect(g); g.connect(audioCtx.destination); g.connect(audioDest); // audioDest: heard by the real-time export too
+    src.start();
+  } catch { /* audio not available */ }
+}
+let sfxLastT = 0;
+/** During playback, fire each sound whose time was just passed. */
+function fireSounds(t) {
+  const from = sfxLastT; sfxLastT = t;
+  if (video.paused || t <= from || t - from > 0.5) return;
+  if (S.exporting && S.exportVia === 'webcodecs') return; // that export mixes them into the file itself
+  for (const fx of allSounds()) if (fx.t > from && fx.t <= t) playSound(fx.id, fx.vol);
+}
+
 function setSegments(next, keepSel = true) {
   S.segments = C.normalize(next);
   if (!keepSel) S.selected = -1;
@@ -311,6 +370,8 @@ function setSegments(next, keepSel = true) {
 function seekTo(t) { if (S.mode === 'file' && video.src) video.currentTime = Math.max(0, t + 0.01); }
 
 function renderSegs() {
+  $('timeline').hidden = !S.file || S.mode !== 'file';
+  if (timeline && !$('timeline').hidden) timeline.render();
   const box = $('segs');
   box.innerHTML = '';
   S.active = -1;
@@ -483,6 +544,8 @@ async function loadFile(file) {
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
+  S.wave = null; timeline && timeline.reset();
+  S.audioP.then(a => { if (S.file === file) { S.wave = wavePeaks(a); timeline && timeline.render(); } }, () => {});
   S.segments = []; S.selected = -1;
   hist = []; hIdx = -1; commit();
   fitCanvas(video.videoWidth || 1080, video.videoHeight || 1920);
@@ -1182,9 +1245,18 @@ async function exportVideo({ kind = 'video', size } = {}) {
     const srcBps = S.file.size * 8 / dur;
     // Best quality first: WebCodecs (H.264 at ≥ source bitrate, original audio copied as-is).
     if (kind === 'video' && !window.__vczNoWebCodecs) {
+      const sounds = allSounds();
+      S.exportVia = 'webcodecs';
       const wc = await exportWebCodecs({
-        video, file: S.file, canvas: xcanvas, paint, dur, srcBps, job,
-        decodePcm: async () => { try { return await decodeBuffer(await S.file.arrayBuffer(), true); } catch { return null; } },
+        video, file: S.file, canvas: xcanvas, paint, dur, srcBps, job, mixAudio: sounds.length > 0,
+        decodePcm: async () => {
+          let raw = null;
+          const data = await S.file.arrayBuffer();
+          try { raw = await decodeBuffer(data.slice(0), true); } catch {
+            try { raw = await decodeBuffer(extractAacAdts(data).adts.slice().buffer, true); } catch { /* no decodable sound */ }
+          }
+          return sounds.length ? mixWithSfx(raw, dur, sounds, raw ? raw.sampleRate : 48000) : raw;
+        },
         onProgress: (p, t) => {
           $('exportBar').style.width = `${(p * 100).toFixed(1)}%`;
           $('exportText').textContent = `${Math.round(p * 100)}% · ${fmt(t)} of ${fmt(dur)} · ${size.w}×${size.h} · original-quality MP4`;
@@ -1201,6 +1273,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
       video.currentTime = 0;
     }
     window.__vczLastExport = 'mediarecorder';
+    S.exportVia = 'mediarecorder';
     // Match the source: bitrate from the file (capped), frame rate from the decoded frames.
     const k = (size.w * size.h) / ((video.videoWidth || size.w) * (video.videoHeight || size.h));
     const vbr = Math.round(Math.min(60e6, Math.max(4e6, srcBps * 1.15 * k)));
@@ -1446,6 +1519,8 @@ function loop() {
     $('time').textContent = `${fmt(t)} / ${fmt(video.duration)}`;
     if (!S.exporting && document.activeElement !== $('seek')) $('seek').value = Math.round(t / video.duration * 1000);
     highlightSeg(t);
+    timeline && !$('timeline').hidden && timeline.tick(t);
+    fireSounds(t);
   }
   requestAnimationFrame(loop);
 }
