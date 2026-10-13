@@ -489,3 +489,8 @@ body.no-scroll .nav { visibility: hidden; }
 .make-btn { width: 100%; margin-top: 10px; }
 .make-lang { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 .cap-bar[hidden] { display: none; }
+/* Colour tab */
+.looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.look { border: 2px solid var(--line); background: #fff; border-radius: 12px; padding: 4px 4px 6px; cursor: pointer; display: grid; gap: 4px; font-size: 11px; font-weight: 700; color: var(--text); }
+.look canvas { width: 100%; aspect-ratio: 4/5; border-radius: 8px; display: block; background: #ddd; }
+.look.on { border-color: var(--accent); box-shadow: 0 6px 16px rgba(109,40,217,.18); }

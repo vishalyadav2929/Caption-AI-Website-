@@ -581,6 +581,50 @@ await step('editor upload: captions start by themselves (saved languages) or a "
   await ctx.close();
 });
 
+await step('colour grading: looks change the preview, .cube import, undo, and the export carries the grade', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  m.on('dialog', d => d.accept()); // "export without captions?"
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForTimeout(500);
+  await m.evaluate(() => { const v = window.__vczVideo; v.currentTime = 2; });
+  await m.waitForTimeout(400);
+  const mean = () => m.evaluate(() => { const c = document.getElementById('stage'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 64) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } return [r / n, g / n, b / n].map(Math.round); });
+  const before = await mean();
+  await m.click('#tabColor');
+  assert.ok(await m.locator('.look').count() >= 9, 'built-in looks listed');
+  await m.click('.look[data-look="bw"]');
+  await m.waitForTimeout(300);
+  const bw = await mean();
+  assert.ok(Math.abs(bw[0] - bw[1]) <= 2 && Math.abs(bw[1] - bw[2]) <= 2, `B&W preview is grey: ${bw}`);
+  assert.notDeepEqual(bw, before);
+  await m.click('#undoBtn');
+  await m.waitForTimeout(300);
+  const undone = await mean();
+  assert.ok(undone.every((v, i) => Math.abs(v - before[i]) <= 3), `undo removes the look: ${before} vs ${undone}`);
+  // A .cube file that swaps red and blue.
+  const rows = []; for (let b = 0; b < 2; b++) for (let g = 0; g < 2; g++) for (let r = 0; r < 2; r++) rows.push(`${b} ${g} ${r}`);
+  await m.setInputFiles('#cubeIn', { name: 'swap.cube', mimeType: 'text/plain', buffer: Buffer.from(`TITLE "Swap"\nLUT_3D_SIZE 2\n${rows.join('\n')}\n`) });
+  await m.waitForSelector('.look[data-look="custom"].on');
+  await m.waitForTimeout(300);
+  const sw = await mean();
+  assert.ok(Math.abs(sw[0] - before[2]) <= 4 && Math.abs(sw[2] - before[0]) <= 4, `red/blue swapped: ${before} -> ${sw}`);
+  // Export (WebCodecs path) carries the grade.
+  await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
+  const dl = m.waitForEvent('download', { timeout: 90000 });
+  await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]');
+  await m.check('input[name=xKind][value=video]'); await m.click('#xGo');
+  const d0 = await dl.catch(async e => { throw new Error(e.message + ' | status: ' + await m.textContent('#status') + ' | errs: ' + errs.join(';')); });
+  const file = join(OUT, 'graded-' + d0.suggestedFilename()); await d0.saveAs(file);
+  const px = execFileSync('sh', ['-c', `ffmpeg -v error -ss 2 -i "${file}" -frames:v 1 -vf scale=54:96,format=rgb24 -f rawvideo - | od -An -tu1 -v -w3 | awk '{r+=$1;g+=$2;b+=$3;n++} END {printf "%d %d %d", r/n, g/n, b/n}'`]).toString().split(' ').map(Number);
+  assert.ok(Math.abs(px[0] - before[2]) <= 25 && Math.abs(px[2] - before[0]) <= 25, `exported frame graded: ${px} (preview before ${before})`);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
