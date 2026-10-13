@@ -480,7 +480,7 @@ function getWorker() {
 /** Download and load the speech model in the background while the user picks languages. */
 async function preloadModel(quality) {
   if (useCloud() && await cloudAvailable()) return; // Fast mode needs no download
-  try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList() }); } catch { /* not critical */ }
+  try { getWorker().postMessage({ type: 'preload', quality, noWordTiming: noWordList(), cpuOnly: cpuOnly() }); } catch { /* not critical */ }
 }
 // Model builds that couldn't give word timing on this device before (so we don't retry them every time).
 const noWordMem = new Set(); // also kept in memory, for private browsing where storage fails
@@ -655,18 +655,31 @@ async function transcribe({ lang, task, quality }, ui) {
       return await runWorker(audio.slice(), { lang, task, quality }, ui);
     } catch (err) {
       if (err.switchBuild && attempt === 0) { ui.onReset && ui.onReset(); ui.onText('Switching to a model with word-by-word timing…'); continue; }
+      if (err.gpuStall && attempt < 2) {
+        try { localStorage.setItem('vcz-nogpu', '1'); } catch { /* private mode */ }
+        noGpuMem = true;
+        ui.onReset && ui.onReset(); ui.onText('This computer’s graphics chip is too slow for this, switching to the processor…');
+        continue;
+      }
       throw err;
     }
   }
 }
 // If the worker goes silent this long, the phone most likely killed it (out of memory).
 const WORKER_SILENCE_MS = 150000;
+// On the graphics chip (WebGPU) the first part takes a few seconds; some laptop chips stall instead.
+const GPU_STALL_MS = 40000;
+let noGpuMem = false;
+const cpuOnly = () => { if (noGpuMem || window.__vczNoGpu) return true; try { return localStorage.getItem('vcz-nogpu') === '1'; } catch { return false; } };
 function runWorker(audio, { lang, task, quality }, ui) {
   getWorker();
   return new Promise((resolve, reject) => {
-    let last = Date.now(), listenStart = Date.now();
+    let last = Date.now(), listenStart = Date.now(), device = null, listening = false, partsDone = 0;
     const fail = err => { clearInterval(watch); busyGen = null; if (worker) { worker.terminate(); worker = null; } reject(err); };
     const watch = setInterval(() => {
+      if (device === 'webgpu' && listening && !partsDone && Date.now() - listenStart > (window.__vczGpuStallMs || GPU_STALL_MS)) {
+        return fail(Object.assign(new Error('graphics chip stalled'), { gpuStall: true }));
+      }
       if (Date.now() - last > WORKER_SILENCE_MS) fail(new Error('The speech model stopped responding. The phone may be low on memory: close other apps, or pick “Fast” quality under More options, and try again.'));
     }, 5000);
     busyGen = { reject: err => { clearInterval(watch); reject(err); } };
@@ -679,17 +692,22 @@ function runWorker(audio, { lang, task, quality }, ui) {
       if (data.type === 'download') {
         const pct = data.loaded / data.total * 100;
         ui.onText(`Loading speech model… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)} (downloaded only the first time)`); ui.onPct(pct);
-      } else if (data.type === 'status') { if (/Listening/.test(data.text)) listenStart = Date.now(); ui.onText(data.text); }
+      } else if (data.type === 'status') {
+        if (/Listening/.test(data.text)) { listenStart = Date.now(); listening = true; ui.onPct(3); }
+        ui.onText(data.text);
+      }
+      else if (data.type === 'model') { device = window.__vczPretendGpu && !cpuOnly() ? 'webgpu' : data.device; } // (pretend: tests only)
       else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
       else if (data.type === 'noWordTiming') { noWordMem.add(data.name); try { localStorage.setItem('vcz-noword', JSON.stringify([...new Set([...noWordList(), data.name])])); } catch { /* private mode */ } }
       else if (data.type === 'transcribe') {
+        partsDone = data.done;
         // After the first part we know this phone's speed, so say roughly how long is left.
         const left = data.done && data.done < data.total ? Math.round((Date.now() - listenStart) / data.done * (data.total - data.done) / 1000) : 0;
         ui.onText(`Writing captions… part ${Math.min(data.done + 1, data.total)} of ${data.total}${left ? ` · about ${left} s left` : ''}`); ui.onPct(data.done / data.total * 100);
       } else if (data.type === 'error') { fail(Object.assign(new Error(data.text), { switchBuild: data.switchBuild })); }
       else if (data.type === 'done') { clearInterval(watch); busyGen = null; resolve(data); }
     };
-    worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task, noWordTiming: noWordList(), debugFailWord: window.__vczDebugFailWord }, [audio.buffer]);
+    worker.postMessage({ type: 'transcribe', audio, quality, language: lang.whisper, task, noWordTiming: noWordList(), cpuOnly: cpuOnly(), debugFailWord: window.__vczDebugFailWord }, [audio.buffer]);
   });
 }
 function cancelTranscribe() {

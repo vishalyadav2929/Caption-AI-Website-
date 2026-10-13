@@ -103,6 +103,9 @@ if (log.length) console.log('CONSOLE:', log.slice(0, 10).join('\n'));
 await page.evaluate(() => navigator.serviceWorker && navigator.serviceWorker.ready);
 const hitsBefore = hfHits;
 await page.reload();
+// Pretend this computer runs the model on a graphics chip that stalls: the site must switch to the
+// processor by itself (and remember it), not sit on "Listening…".
+await page.evaluate(() => { window.__vczPretendGpu = true; window.__vczGpuStallMs = 1; });
 assert.ok(await page.evaluate(() => !!navigator.serviceWorker.controller), 'service worker controls the page');
 await page.setInputFiles('#startFile', video);
 await page.waitForSelector('#editor:not([hidden])', { timeout: 30000 }).catch(() => {});
@@ -119,9 +122,12 @@ for (;;) {
 const n2 = await page.evaluate(() => window.__vcz.S.segments.flatMap(s => s.words).length);
 console.log('MODEL REQUESTS on second visit:', hfHits - hitsBefore);
 console.log('SECOND VISIT:', ((Date.now() - t2) / 1000).toFixed(1), 's,', n2, 'words |', stages2.join(' | '));
+const noGpu = await page.evaluate(() => localStorage.getItem('vcz-nogpu'));
 await browser.close(); server.close();
 assert.ok(n2 >= 100, `second visit: ${n2} words`);
-assert.ok(!stages2.some(x => /Switching/.test(x)), 'second visit: no model switch');
+assert.ok(!stages2.some(x => /Switching to a model/.test(x)), 'second visit: no model switch');
+assert.ok(stages2.some(x => /switching to the processor/.test(x)), 'graphics-chip stall detected and switched');
+assert.equal(noGpu, '1', 'remembered for next time');
 assert.equal(hfHits - hitsBefore, 0, 'second visit: model comes from the browser cache, nothing downloaded');
 assert.ok(result.matched / result.truth >= 0.9, `only ${result.matched} of ${result.truth} words recognized`);
 assert.equal(result.approx, false, 'word timing kept by switching model builds');
