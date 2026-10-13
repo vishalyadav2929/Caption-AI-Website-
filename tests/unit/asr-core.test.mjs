@@ -81,3 +81,34 @@ test('cleanWords drops invented filler and runaway repetition', () => {
   assert.deepEqual(cleanWords([{ text: 'सब्सक्राइब', start: 0, end: 1 }, { text: 'नमस्ते', start: 1, end: 2 }]).map(x => x.text), ['नमस्ते']);
   assert.deepEqual(cleanWords(w('ye ek normal line hai')).map(x => x.text).join(' '), 'ye ek normal line hai');
 });
+
+test('snapToSpeech moves a word that starts in silence onto the voice', async () => {
+  const { snapToSpeech } = await import('../../site/js/asr-core.js');
+  const sr = 16000, a = new Float32Array(sr * 4);
+  for (let i = 0; i < a.length; i++) a[i] = (Math.random() - 0.5) * 0.002; // quiet room noise
+  for (let i = sr * 1.5; i < sr * 2.5; i++) a[i] += Math.sin(i / 7) * 0.3; // voice 1.5–2.5 s
+  const [w] = snapToSpeech([{ text: 'hello', start: 0, end: 2.4 }], a);
+  assert.ok(Math.abs(w.start - 1.45) < 0.06, `start ${w.start}`);
+  // A word already on the voice is left alone.
+  const [v] = snapToSpeech([{ text: 'x', start: 1.6, end: 2.0 }], a);
+  assert.deepEqual([v.start, v.end], [1.6, 2.0]);
+});
+
+test('snapToSpeech spreads estimated words over the voiced part of their sentence', async () => {
+  const { snapToSpeech } = await import('../../site/js/asr-core.js');
+  const sr = 16000, a = new Float32Array(sr * 6);
+  for (let i = sr * 3; i < sr * 5; i++) a[i] = Math.sin(i / 7) * 0.3; // voice only 3–5 s
+  const words = ['one', 'two', 'three', 'four'].map((t, i) => ({ text: t, start: i * 1.5, end: (i + 1) * 1.5, approx: true }));
+  const out = snapToSpeech(words, a);
+  assert.ok(out[0].start >= 2.9 && out.at(-1).end <= 5.1, JSON.stringify(out));
+  for (let i = 1; i < out.length; i++) assert.ok(out[i].start >= out[i - 1].start);
+});
+
+test('planWindows keeps the first window short when asked', async () => {
+  const { planWindows } = await import('../../site/js/asr-core.js');
+  const a = new Float32Array(16000 * 40).fill(0.1);
+  const w = planWindows(a, { firstMax: 12 });
+  assert.ok(w[0].end / 16000 <= 12 && w[0].end / 16000 >= 6, JSON.stringify(w));
+  assert.equal(w.at(-1).end, a.length);
+  assert.equal(planWindows(new Float32Array(16000 * 15), { firstMax: 12 }).length, 1, 'short clips stay one window');
+});

@@ -260,12 +260,16 @@ await step('export: captions only on green screen', async () => {
   console.log('   green screen:', file.split('/').pop(), '| green px', green.trim());
 });
 
-await step('landscape video sizes the canvas to 16:9', async () => {
+await step('replacing the video asks first when there are captions; landscape sizes the canvas to 16:9', async () => {
+  const hadCaptions = await vcz(() => window.__vcz.S.segments.length);
+  let asked = '';
+  page.once('dialog', d => { asked = d.message(); d.accept(); });
   await page.setInputFiles('#fileIn', join(FIX, 'landscape.webm'));
   await page.waitForFunction(() => document.getElementById('meta').textContent.includes('960×540'));
   await page.waitForTimeout(300);
   const dims = await vcz(() => [document.getElementById('stage').width, document.getElementById('stage').height]);
   assert.deepEqual(dims, [960, 540]);
+  if (hadCaptions) assert.match(asked, /captions will be removed/);
 });
 
 await step('no horizontal overflow on phones, tablets and laptops (incl. editor with a video loaded)', async () => {
@@ -411,6 +415,61 @@ await step('without a browser translator: English captions → Hinglish → Hind
   await m.waitForFunction(() => /Translated to/.test(document.getElementById('status').textContent));
   assert.equal(asked.at(-1), 'hi|bn');
   assert.match(await shown(), /\[hi\|bn\]/);
+  await ctx.close();
+});
+
+await step('phone: full screen works without the Fullscreen API (iPhone), typing un-pins the preview, home shows 12 templates', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await ctx.addInitScript(() => { Object.defineProperty(Document.prototype, 'fullscreenEnabled', { get: () => false }); });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForTimeout(300);
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('#fsBtn');
+  const box = await m.locator('#box').boundingBox();
+  assert.ok(box.width >= 389 && box.height >= 840, `fills the screen: ${box.width}x${box.height}`);
+  assert.equal(await m.isVisible('#fsExit'), true);
+  await m.click('#fsPlay');
+  await m.waitForTimeout(200);
+  assert.equal(await m.evaluate(() => !window.__vczVideo.paused), true, 'play from full screen');
+  await m.click('#fsExit');
+  assert.ok((await m.locator('#box').boundingBox()).height < 600, 'back to normal');
+  await m.locator('.seg textarea').first().focus();
+  assert.equal(await m.evaluate(() => getComputedStyle(document.querySelector('.stage')).position), 'static', 'un-pinned while typing');
+  await m.locator('.seg textarea').first().blur();
+  await m.waitForTimeout(100);
+  assert.equal(await m.evaluate(() => getComputedStyle(document.querySelector('.stage')).position), 'sticky', 'pinned again');
+  await m.goto(`${BASE}/index.html`);
+  await m.waitForSelector('#grid .tpl');
+  const visible = () => m.$$eval('#grid .tpl', els => els.filter(e => e.offsetParent).length);
+  assert.equal(await visible(), 12);
+  await m.click('#moreTpl');
+  assert.ok(await visible() > 50);
+  await ctx.close();
+});
+
+await step('home: example videos show live captions on real clips (from examples/manifest.json)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/index.html`);
+  assert.equal(await m.isVisible('#showcase'), false, 'hidden while the manifest is empty');
+  await m.route('**/examples/manifest.json', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ video: 'demo.webm', captions: 'demo.srt', templates: ['classic', 'crazy', 'nope'] }] }) }));
+  await m.route('**/examples/demo.webm', async r => r.fulfill({ contentType: 'video/webm', body: await readFile(join(FIX, 'portrait.webm')) }));
+  await m.route('**/examples/demo.srt', async r => r.fulfill({ contentType: 'text/plain', body: await readFile(join(FIX, 'sample.srt')) }));
+  await m.reload();
+  await m.waitForSelector('#showcase:not([hidden]) .ex');
+  assert.equal(await m.locator('#exGrid .ex').count(), 2, 'unknown template ids are skipped');
+  assert.match(await m.getAttribute('#exGrid .ex >> nth=0', 'href'), /app\.html\?t=classic/);
+  await m.locator('#exGrid .ex').first().scrollIntoViewIfNeeded();
+  await m.waitForTimeout(1500);
+  const lit = await m.evaluate(() => {
+    const c = document.querySelector('#exGrid canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let n = 0; for (let i = 0; i < d.length; i += 16) if (d[i] + d[i + 1] + d[i + 2] > 60) n++;
+    return n;
+  });
+  assert.ok(lit > 1000, `video frame drawn (${lit} lit px)`);
   await ctx.close();
 });
 

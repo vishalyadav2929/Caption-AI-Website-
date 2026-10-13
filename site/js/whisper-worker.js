@@ -2,7 +2,7 @@
 // Nothing is uploaded: the model is downloaded once from the Hugging Face hub, cached by the
 // browser, and run on this device (WebGPU when available, otherwise WebAssembly).
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
-import { transcribeLong, preprocess, cleanWords } from './asr-core.js';
+import { transcribeLong, preprocess, cleanWords, snapToSpeech } from './asr-core.js';
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -17,7 +17,16 @@ const MODELS = {
 let asr = null, loadedKey = null, loadedDevice = null, wordLevelBroken = false, forceCpu = false;
 const post = msg => self.postMessage(msg);
 
-async function load(quality) {
+// One load at a time: a preload and a real run share the same promise.
+let pending = null;
+function load(quality) {
+  if (pending && pending.key === quality && pending.cpu === forceCpu) return pending.p;
+  const p = loadNow(quality);
+  pending = { key: quality, cpu: forceCpu, p };
+  p.catch(() => { if (pending && pending.p === p) pending = null; });
+  return p;
+}
+async function loadNow(quality) {
   if (asr && loadedKey === quality && !(forceCpu && loadedDevice === 'webgpu')) return asr;
   const files = {};
   const progress_callback = p => {
@@ -75,14 +84,19 @@ async function transcribe({ audio, quality, language, task }) {
     const clean = preprocess(audio);
     post({ type: 'status', text: 'Listening to your video…' });
     const res = await transcribeLong(runWindow, clean, {
+      firstMax: 12, // first captions show sooner on long videos
       onProgress: (done, total) => post({ type: 'transcribe', done, total }),
+      // Show each part's captions as soon as it's done.
+      onWords: (words, i, total) => { if (total > 1) post({ type: 'partial', words: snapToSpeech(cleanWords(words), clean) }); },
     });
-    res.words = cleanWords(res.words);
+    res.words = snapToSpeech(cleanWords(res.words), clean);
     post({ type: 'done', ...res });
   }
 }
 
 self.onmessage = async ({ data }) => {
+  // Start downloading/loading the model while the user is still choosing languages.
+  if (data.type === 'preload') { load(data.quality).catch(() => {}); return; }
   if (data.type !== 'transcribe') return;
   try {
     await transcribe(data);

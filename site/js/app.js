@@ -1,7 +1,7 @@
 import { TEMPLATES, FONTS_URL, loadTemplateFonts } from './templates.js';
 import { buildChunks, findChunk, drawCaption } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
-import { detectTextLang, onlineTranslate } from './translate.js';
+import { detectTextLang, onlineTranslate, looksEnglish } from './translate.js';
 import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
@@ -230,7 +230,7 @@ function renderSegs() {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
     const d = document.createElement('p');
-    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
+    d.textContent = genRunning ? 'Your captions are being generated. They will appear here.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? 'Use “More options” below to generate captions, import an SRT file, or tap + Add.' : 'Upload a video first.';
     p.appendChild(d);
     box.appendChild(p);
     return;
@@ -243,7 +243,7 @@ function renderSegs() {
     const top = document.createElement('div'); top.className = 'seg-top';
     const num = document.createElement('button'); num.className = 'seg-num'; num.textContent = i + 1;
     num.title = 'Play from here'; num.setAttribute('aria-label', `Caption ${i + 1}: jump to ${fmtT(seg.start)}`);
-    num.onclick = () => { S.selected = i; seekTo(seg.start); markSel(); };
+    num.onclick = () => { S.selected = i; seekTo(seg.start + Math.min(0.25, (seg.end - seg.start) / 3)); markSel(); };
     const tin = (val, which) => {
       const inp = document.createElement('input');
       inp.className = 't-in'; inp.value = fmtT(val); inp.inputMode = 'decimal';
@@ -366,6 +366,8 @@ async function loadFile(file) {
   S.fileURL = url;
   S.file = file;
   S.decodeFailed = false;
+  // Start reading the sound right away, so it's ready by the time captions are requested.
+  S.audioP = decodeFull(file); S.audioP.catch(() => {});
   S.segments = []; S.selected = -1;
   hist = []; hIdx = -1; commit();
   fitCanvas(video.videoWidth || 1080, video.videoHeight || 1920);
@@ -389,7 +391,11 @@ function fitCanvas(w, h) {
   canvas.width = Math.round(w * k / 2) * 2;
   canvas.height = Math.round(h * k / 2) * 2;
 }
-$('fileIn').onchange = async e => { await loadFile(e.target.files[0]); e.target.value = ''; };
+$('fileIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (f && S.segments.length && !confirm('Use a different video? Your current captions will be removed.')) return;
+  await loadFile(f);
+};
 const box = $('box');
 ['dragenter', 'dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
@@ -434,13 +440,29 @@ const nudgeSize = d => {
 };
 $('szDown').onclick = () => nudgeSize(-0.1);
 $('szUp').onclick = () => nudgeSize(0.1);
+// Full screen. iPhone Safari can't make a page element full screen, so fill the window instead.
+const pseudoFs = on => { box.classList.toggle('pseudo-fs', on); document.body.classList.toggle('no-scroll', on); };
+const isFs = () => !!document.fullscreenElement || box.classList.contains('pseudo-fs');
 $('fsBtn').onclick = () => {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else if (box.requestFullscreen) box.requestFullscreen().catch(() => toast('Full screen isn’t available here.'));
+  if (box.requestFullscreen && document.fullscreenEnabled) box.requestFullscreen().catch(() => pseudoFs(true));
+  else pseudoFs(true);
 };
+$('fsExit').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else pseudoFs(false); };
+$('fsPlay').onclick = () => $('playBtn').click();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classList.contains('pseudo-fs')) pseudoFs(false); });
+window.__vczIsFs = isFs; window.__vczVideo = video; // tests
 
 // ---------- speech-to-text ----------
 let worker = null, busyGen = null;
+function getWorker() {
+  if (!worker) {
+    worker = new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
+    worker.onerror = () => { if (!busyGen) { worker.terminate(); worker = null; } };
+  }
+  return worker;
+}
+/** Download and load the speech model in the background while the user picks languages. */
+function preloadModel(quality) { try { getWorker().postMessage({ type: 'preload', quality }); } catch { /* not critical */ } }
 // ---- audio extraction ----
 // 1) Decode the whole file at the browser's native rate (works for MP4/WebM/M4A in Chrome, Edge, Firefox).
 // 2) If the browser can't decode the container (e.g. iPhone .mov in Safari), play the video once,
@@ -556,7 +578,8 @@ async function captureRealtime(ui, rate = 3) {
 }
 async function extractAudio(ui) {
   if (!S.decodeFailed && !window.__vczForceRealtime) {
-    try { return await decodeFull(S.file); } catch { S.decodeFailed = true; }
+    const pre = S.audioP; S.audioP = null;
+    try { return await (pre || decodeFull(S.file)); } catch { S.decodeFailed = true; }
   }
   const fast = await captureRealtime(ui, 3);
   // Some browsers mute audio at higher speeds; if we got silence, read it once more at normal speed.
@@ -577,7 +600,7 @@ async function transcribe({ lang, task, quality }, ui) {
   let peak = 0;
   for (let i = 0; i < audio.length; i += 50) peak = Math.max(peak, Math.abs(audio[i]));
   if (!audio.length || peak < 0.002) throw new Error('This video seems to have no sound, so there is nothing to transcribe.');
-  worker = worker || new Worker(new URL('./whisper-worker.js', import.meta.url), { type: 'module' });
+  getWorker();
   return new Promise((resolve, reject) => {
     busyGen = { reject };
     worker.onerror = e => {
@@ -590,6 +613,7 @@ async function transcribe({ lang, task, quality }, ui) {
         const pct = data.loaded / data.total * 100;
         ui.onText(`Downloading speech model (one time)… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)}`); ui.onPct(pct);
       } else if (data.type === 'status') { ui.onText(data.text); }
+      else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
       else if (data.type === 'transcribe') {
         ui.onText(`Transcribing… part ${Math.min(data.done + 1, data.total)} of ${data.total}`); ui.onPct(data.done / data.total * 100);
       } else if (data.type === 'error') { busyGen = null; worker.terminate(); worker = null; reject(new Error(data.text)); }
@@ -641,7 +665,15 @@ async function runGeneration({ lang, mode, quality }) {
   $('genOvBar').style.width = '0';
   $('genOvText').textContent = 'Starting…';
   try {
+    // Show captions part by part while the rest is still being transcribed.
+    const soFar = [];
+    S.hinglish = mode === 'hinglish';
     const res = await transcribe({ lang, task, quality }, {
+      onWords: words => {
+        soFar.push(...words);
+        S.segments = C.segmentsFromWords(soFar, wordsPerCaption(), 32);
+        renderSegs();
+      },
       onText: t => { $('genOvText').textContent = t; },
       onPct: p => { $('genOvBar').style.width = p == null ? '0' : `${p}%`; },
     });
@@ -649,7 +681,7 @@ async function runGeneration({ lang, mode, quality }) {
     else status(describeResult(res));
     genUI(false);
     // Small models sometimes write English for Hindi (or Hinglish) speech. Turn it back into what was asked for.
-    if (S.segments.length && mode !== 'english' && lang.whisper && lang.whisper !== 'english' && S.textLang === 'en') {
+    if (S.segments.length && mode !== 'english' && lang.whisper && lang.whisper !== 'english' && S.textLang === 'en' && looksEnglish(S.segments.map(C.segmentText).join(' '))) {
       const want = LANGUAGES.find(l => l.whisper === lang.whisper && !!l.hinglish === (mode === 'hinglish'));
       toast(`The speech model wrote English. Converting to ${want.name.split(' — ')[0]}… For exact words, use “Best for Hindi” quality.`, 7000);
       await translateTo(want);
@@ -729,6 +761,17 @@ function setMode(mode) {
   renderSegs(); syncActions();
 }
 $('modeFile').onclick = () => setMode('file');
+$('srtOut').onclick = () => { if (!S.segments.length) return toast('There are no captions yet.'); $('srtBtn').click(); };
+$('liveOpen').onclick = () => { setMode(S.mode === 'live' ? 'file' : 'live'); $('liveOpen').textContent = S.mode === 'live' ? 'Back to video' : 'Live captions'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// Phones: remember how tall the pinned preview is (so scrolled-to items land below it), and
+// un-pin it while typing so the keyboard leaves room for the text field.
+{
+  const stage = document.querySelector('.stage');
+  new ResizeObserver(() => document.documentElement.style.setProperty('--stage-h', `${stage.offsetHeight}px`)).observe(stage);
+  const typingField = el => el && el.matches && el.matches('aside textarea, aside input:not([type=checkbox]):not([type=range]):not([type=file])');
+  document.addEventListener('focusin', e => document.body.classList.toggle('typing', typingField(e.target)));
+  document.addEventListener('focusout', () => setTimeout(() => document.body.classList.toggle('typing', typingField(document.activeElement)), 50));
+}
 $('modeLive').onclick = () => setMode('live');
 
 $('camBtn').onclick = async () => {
@@ -1037,7 +1080,7 @@ $('trTarget').value = String(LANGUAGES.findIndex(l => l.whisper === 'english'));
 $('trNote').textContent = hasTranslator()
   ? 'Translates on your device with Chrome’s built-in translator. Timing is kept; word highlights inside each caption become estimated.'
   : 'Translates the caption text with the free MyMemory service (your video is never sent). Hindi ↔ Hinglish works offline. Timing is kept; word highlights become estimated.';
-$('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
+$('trOpen').onclick = () => { $('moreOpts').open = true; $('trHead').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
 
 // The language the caption text is really in, judged from its script.
 function sourceLangCode() {
@@ -1335,6 +1378,7 @@ async function startFile(file) {
   $('startDrop').hidden = true;
   $('startPreview').hidden = false;
   $('startMeta').textContent = fileMeta();
+  preloadModel($('startModel').value);
   syncStart();
   beginFromStart();
 }

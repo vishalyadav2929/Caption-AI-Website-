@@ -44,12 +44,23 @@ There's no account, payment or server. Everything runs in the visitor's browser.
 - Very long videos (10+ minutes) use a lot of memory, because the whole audio track is decoded at once.
 - Live captions need Chrome, Edge or Safari, and their timing is approximate.
 
+## Example videos on the home page
+
+The "Made with our captions" section stays hidden until `site/examples/manifest.json` lists clips. Put your own videos (or free stock clips you have the right to use, e.g. from Pexels) in `site/examples/` with their captions as `.srt`, then list them:
+
+```json
+{ "items": [ { "video": "clip1.mp4", "captions": "clip1.srt", "templates": ["classic", "crazy", "discipline"] } ] }
+```
+
+One clip can appear in several templates; the captions are drawn live on top, exactly as the editor would. Keep clips short (5–10 s, under ~3 MB) so the page stays fast.
+
 ## Run locally
 
 ```sh
 npm start              # serves ./site on http://localhost:8080
 npm test               # unit tests (Node 20+)
 npm run test:e2e       # browser test: needs Playwright + Chromium and ffmpeg
+npm run test:asr       # real Whisper on a speech clip: accuracy, timing, progressive captions
 ```
 
 ## Deploy to Netlify (free)
