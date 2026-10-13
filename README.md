@@ -2,7 +2,7 @@
 
 A free, browser-based caption editor for Reels, Shorts and Pins. Upload a video, generate captions from its audio, fix the text and timing, pick one of 85 animated caption styles, and download the video with the captions burned in.
 
-There's no account, payment or server. Everything runs in the visitor's browser.
+There's no account or payment. Everything runs in the visitor's browser, except the optional **Fast mode** (below), which the site owner can switch on for instant, more accurate captions.
 
 ## What works
 
@@ -73,7 +73,21 @@ npm run test:asr       # real Whisper on a speech clip: accuracy, timing, progre
 
 **Custom domain (later):** **Domain management → Add a domain**, enter it, then either point your registrar's nameservers to Netlify DNS or add the CNAME/A records Netlify shows. HTTPS is issued automatically.
 
-No environment variables or API keys are needed.
+No environment variables or API keys are needed for the site to work.
+
+### Optional: Fast mode (instant, more accurate captions)
+
+On-device captions take ~20–40 s on a phone and small models struggle with Hindi. Fast mode sends the **audio only** (never the video), in ≤ 30 s clips, to Groq's Whisper large-v3 through the site's own Netlify Function (`netlify/functions/transcribe.mjs`), so the key is never in the browser. Captions come back in a second or two.
+
+1. Create a free account at **console.groq.com** → **API Keys** → **Create API key**.
+2. Netlify → your project → **Project configuration → Environment variables → Add a variable**: key `GROQ_API_KEY`, value = the key. Scope: Functions.
+3. **Deploys → Trigger deploy**.
+
+Visitors then see "⚡ Fast mode" ticked under *More options* (they can untick it to stay fully on-device). If the free quota runs out or the server is unreachable, the site falls back to on-device captions automatically. The function only answers requests from the site's own pages. Remove the variable to switch it off again.
+
+### Install as an app
+
+The site is a Progressive Web App: on Android Chrome use **Add to Home screen / Install app**; on iPhone Safari use **Share → Add to Home Screen**. It opens full screen with its own icon and works offline once loaded (generating captions on-device needs the model downloaded once).
 
 ## Project layout
 

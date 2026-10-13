@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy — ViralCaptionZone</title>
   <meta name="description" content="What ViralCaptionZone does with your videos: nothing leaves your device. Here is every outside request the site makes.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#6d28d9">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ViralCaption">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ViralCaptionZone">
+  <meta property="og:title" content="Privacy — ViralCaptionZone">
+  <meta property="og:description" content="What ViralCaptionZone does with your videos: nothing leaves your device. Here is every outside request the site makes.">
+  <meta property="og:image" content="https://viralcaptionwala.netlify.app/icons/og.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/styles.css">
   <style>
     .doc { max-width: 760px; margin: 0 auto; padding: 28px 20px 80px; }
@@ -23,7 +36,7 @@
   <main class="doc">
     <a class="back" href="index.html">← Back</a>
     <h1>Privacy</h1>
-    <p><strong>Your videos never leave your device.</strong> Uploading, transcribing, editing and exporting all happen inside your browser. There is no account, no database, no analytics, no ads and no cookies.</p>
+    <p><strong>Your videos never leave your device.</strong> Uploading, editing and exporting all happen inside your browser, and so does transcribing unless Fast mode (below) is on, in which case only the audio is sent. There is no account, no database, no analytics, no ads and no cookies.</p>
 
     <h2>Outside requests the site makes</h2>
     <table>
@@ -33,6 +46,7 @@
         <tr><td>Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>)</td><td>Every page load</td><td>Requests for the caption fonts. Google sees your IP address and browser, as with any web font.</td></tr>
         <tr><td>jsDelivr (<code>cdn.jsdelivr.net</code>)</td><td>Only when you click “Generate captions”</td><td>Downloads the open-source transformers.js library and its WebAssembly runtime.</td></tr>
         <tr><td>Hugging Face (<code>huggingface.co</code>)</td><td>Only the first time you generate captions with a given quality</td><td>Downloads the Whisper speech model (about 40–250 MB). Your browser caches it, so later runs don’t download it again. Your audio is <em>not</em> sent; the model runs on your device.</td></tr>
+        <tr><td>Groq (<code>api.groq.com</code>), through this site’s own server</td><td>Only if this site has Fast mode switched on and you leave “⚡ Fast mode” ticked</td><td>Your video’s audio, in clips of up to 30 seconds, to be turned into text by Whisper large-v3. Never the video. Untick Fast mode under “More options” to keep everything on your device.</td></tr>
         <tr><td>MyMemory (<code>api.mymemory.translated.net</code>)</td><td>Only when you press “Translate” in a browser without a built-in translator (e.g. iPhone Safari)</td><td>The caption text only, to be translated. Never your video or audio. Hindi ↔ Hinglish is done on your device and sends nothing.</td></tr>
         <tr><td>Your browser’s speech service</td><td>Only in “Live captions” mode</td><td>Live captions use your browser’s built-in speech recognition. In Chrome and Edge this sends microphone audio to Google or Microsoft to be transcribed. Uploaded videos never use this.</td></tr>
       </tbody>
@@ -45,5 +59,6 @@
       <li>The exported video, which your browser saves straight to your downloads.</li>
     </ul>
   </main>
+  <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 </body>
 </html>

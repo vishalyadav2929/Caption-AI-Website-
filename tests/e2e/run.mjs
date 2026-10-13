@@ -12,7 +12,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ROOT = join(REPO, 'site');
 const OUT = join(REPO, 'tests', 'e2e', 'out');
 const FIX = join(REPO, 'tests', 'fixtures');
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.webm': 'video/webm', '.srt': 'text/plain' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.webm': 'video/webm', '.srt': 'text/plain', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png' };
 
 async function loadPlaywright() {
   try { return await import('playwright'); } catch { /* fall back to a global install */ }
@@ -39,7 +39,7 @@ const step = async (name, fn) => {
 const { chromium } = await loadPlaywright();
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true, serviceWorkers: 'block' });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { if (m.type() === 'error' && !/fonts\.g|ERR_|Failed to load resource/.test(m.text())) errors.push(m.text()); });
@@ -297,7 +297,7 @@ await step('replacing the video asks first when there are captions; landscape si
 await step('no horizontal overflow on phones, tablets and laptops (incl. editor with a video loaded)', async () => {
   const sizes = [[375, 667, true], [390, 844, true], [412, 915, true], [768, 1024, true], [1024, 768, true], [1280, 720, false], [1440, 900, false]];
   for (const [w, h, mobile] of sizes) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile && w < 1000, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, isMobile: mobile && w < 1000, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1, serviceWorkers: 'block' });
     const m = await ctx.newPage();
     const over = async label => {
       const r = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, innerWidth]);
@@ -317,7 +317,7 @@ await step('no horizontal overflow on phones, tablets and laptops (incl. editor 
 });
 
 await step('iPhone-style audio lock: shows “Tap to start captions”, and a tap reads the audio', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, serviceWorkers: 'block' });
   await ctx.addInitScript(() => {
     localStorage.setItem('vcz-langs', JSON.stringify({ spoken: 'Hindi — हिन्दी', caption: 'hinglish', quality: 'balanced' }));
     window.__vczForceRealtime = true; // the path iPhone takes when it can't decode a .mov directly
@@ -343,7 +343,7 @@ await step('iPhone-style audio lock: shows “Tap to start captions”, and a ta
 });
 
 await step('drag the captions up/down on the video; A−/A+ change size', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
   const m = await ctx.newPage();
   await m.goto(`${BASE}/app.html`);
   await m.click('#startSkip');
@@ -367,7 +367,7 @@ await step('drag the captions up/down on the video; A−/A+ change size', async 
 });
 
 await step('translate captions with the browser translator (mocked) keeps the timing', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
   await ctx.addInitScript(() => {
     self.Translator = {
       availability: async () => 'available',
@@ -397,7 +397,7 @@ await step('translate captions with the browser translator (mocked) keeps the ti
 });
 
 await step('without a browser translator: English captions → Hinglish → Hindi → Bangla (online service mocked)', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   const asked = [];
   const HI = { 'this is how your reels go viral': 'ऐसे तुम्हारी रील्स वायरल होती हैं', 'my friend': 'मेरा दोस्त' };
   await ctx.route('https://api.mymemory.translated.net/**', route => {
@@ -441,7 +441,7 @@ await step('without a browser translator: English captions → Hinglish → Hind
 });
 
 await step('phone: full screen works without the Fullscreen API (iPhone), typing un-pins the preview, home shows 12 templates', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   await ctx.addInitScript(() => { Object.defineProperty(Document.prototype, 'fullscreenEnabled', { get: () => false }); });
   const m = await ctx.newPage();
   await m.goto(`${BASE}/app.html`);
@@ -473,7 +473,7 @@ await step('phone: full screen works without the Fullscreen API (iPhone), typing
 });
 
 await step('home: example videos show live captions on real clips (from examples/manifest.json)', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const m = await ctx.newPage();
   await m.goto(`${BASE}/index.html`);
   assert.equal(await m.isVisible('#showcase'), false, 'hidden while the manifest is empty');
@@ -492,6 +492,60 @@ await step('home: example videos show live captions on real clips (from examples
     return n;
   });
   assert.ok(lit > 1000, `video frame drawn (${lit} lit px)`);
+  await ctx.close();
+});
+
+await step('fast mode (server): captions in one go when the owner has set it up; busy server falls back to the device', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  let posts = 0, cdn = 0, busy = false;
+  await ctx.route('**/api/transcribe**', async r => {
+    if (r.request().method() === 'GET') return r.fulfill({ contentType: 'application/json', body: '{"enabled":true}' });
+    posts++;
+    if (busy) return r.fulfill({ status: 429, contentType: 'application/json', body: '{"error":"busy"}' });
+    assert.equal(new URL(r.request().url()).searchParams.get('lang'), 'hi');
+    const wav = r.request().postDataBuffer();
+    assert.equal(wav.subarray(0, 4).toString(), 'RIFF');
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ level: 'word', words: [{ text: 'नमस्ते', start: 0.3, end: 0.9 }, { text: 'दोस्तों', start: 0.9, end: 1.6 }, { text: 'आज', start: 2.0, end: 2.4 }] }) });
+  });
+  await ctx.route('https://cdn.jsdelivr.net/**', r => { cdn++; r.abort(); });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.setInputFiles('#startFile', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#startPreview:not([hidden])');
+  await m.click('#spokenCombo .combo-btn'); await m.fill('#spokenCombo input', 'hindi'); await m.keyboard.press('Enter');
+  await m.click('#captionCombo .combo-btn'); await m.click('#captionCombo [role=option]:has-text("Hinglish")');
+  await m.waitForFunction(() => /Fast mode/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
+  assert.equal(posts, 1, 'one 6 s clip sent');
+  assert.equal(cdn, 0, 'no on-device model download in fast mode');
+  const words = await m.evaluate(() => window.__vcz.S.segments.flatMap(s => s.words.map(w => w.text)));
+  assert.deepEqual(words, ['नमस्ते', 'दोस्तों', 'आज']);
+  assert.equal(await m.isVisible('#cloudRow'), false, 'option lives under More options');
+  await m.evaluate(() => { document.getElementById('moreOpts').open = true; });
+  assert.equal(await m.isVisible('#cloudRow'), true);
+  // Busy server: falls back to on-device captions (which can't download here, so it ends with a clear message).
+  busy = true;
+  m.once('dialog', d => d.accept()); // "replace the current captions?"
+  await m.click('#genBtn');
+  await m.waitForFunction(() => /Couldn’t generate captions/.test(document.getElementById('status').textContent), null, { timeout: 60000 });
+  assert.equal(posts, 2);
+  assert.ok(cdn > 0, 'fell back to the on-device model');
+  await ctx.close();
+});
+
+await step('installable app: manifest, icons, service worker, opens offline', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/index.html`);
+  const man = await m.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
+  assert.equal(man.display, 'standalone');
+  for (const ic of man.icons) assert.equal((await m.request.get(`${BASE}/${ic.src}`)).status(), 200, ic.src);
+  await m.evaluate(() => navigator.serviceWorker.ready);
+  await m.goto(`${BASE}/app.html`); // cached by the worker
+  await m.waitForTimeout(500);
+  await ctx.setOffline(true);
+  await m.reload();
+  assert.equal(await m.isVisible('#startDrop'), true, 'editor opens offline');
+  await ctx.setOffline(false);
   await ctx.close();
 });
 

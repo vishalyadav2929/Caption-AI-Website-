@@ -2,6 +2,7 @@ import { TEMPLATES, TAGS, SAMPLES } from './templates.js';
 import { buildChunks, findChunk, drawCaption, spreadWords } from './renderer.js';
 
 const LOOP = 4.2;
+const FRAME_MS = 1000 / 30 - 2;
 const TW = 400, TH = 300;
 
 function sampleChunks(tpl, lang = 'en') {
@@ -100,19 +101,24 @@ export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSele
       onSelect && onSelect(tpl);
     };
     gridEl.appendChild(el);
-    tiles.push({ el, tpl, ctx: cv.getContext('2d'), chunks: sampleChunks(tpl), visible: true, scene: /^estate/.test(tpl.id) });
+    tiles.push({ el, tpl, ctx: cv.getContext('2d'), chunks: sampleChunks(tpl), visible: false, scene: /^estate/.test(tpl.id) });
   });
   updateCount();
 
   // Only animate tiles that are on screen.
+  const byEl = new Map(tiles.map(x => [x.el, x]));
   const io = new IntersectionObserver(entries => entries.forEach(en => {
-    const tile = tiles.find(x => x.el === en.target);
+    const tile = byEl.get(en.target);
     if (tile) tile.visible = en.isIntersecting;
-  }));
+  }), { rootMargin: '150px' });
   tiles.forEach(t => io.observe(t.el));
 
   const t0 = performance.now();
+  let lastDraw = 0;
   (function loop(now) {
+    requestAnimationFrame(loop);
+    if (now - lastDraw < FRAME_MS) return; // 30 fps is plenty for previews and halves the CPU cost
+    lastDraw = now;
     const sec = (now - t0) / 1000;
     const t = sec % LOOP;
     if (tiles.some(x => x.visible && x.tpl.fx === 'videoFill')) paintFill(sec);
@@ -123,7 +129,6 @@ export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSele
       else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, TW, TH); }
       drawCaption(ctx, TW, TH, findChunk(tile.chunks, t), t, { ...tile.tpl, pos: tile.tpl.pos === 0.18 ? 0.25 : 0.5 }, { fill: fillCanvas });
     }
-    requestAnimationFrame(loop);
   })(t0);
 
   return { select(id) { current = id; tiles.forEach(x => x.el.classList.toggle('on', x.tpl.id === id)); } };
@@ -136,13 +141,17 @@ export function mountPhone(canvas, tplId, text, hue) {
   const W = canvas.width = 360, H = canvas.height = 640;
   const chunks = buildChunks(spreadWords(text, 0.1, LOOP - 0.3), tpl.words, 40);
   const t0 = performance.now();
+  let lastDraw = 0, visible = true;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(canvas);
   (function loop(now) {
+    requestAnimationFrame(loop);
+    if (!visible || now - lastDraw < FRAME_MS) return;
+    lastDraw = now;
     const sec = (now - t0) / 1000, t = sec % LOOP;
     const g = ctx.createLinearGradient(0, 0, W, H);
     g.addColorStop(0, `hsl(${hue},40%,${20 + 4 * Math.sin(sec / 1.6)}%)`);
     g.addColorStop(1, `hsl(${(hue + 60) % 360},45%,8%)`);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     drawCaption(ctx, W, H, findChunk(chunks, t), t, tpl);
-    requestAnimationFrame(loop);
   })(t0);
 }
