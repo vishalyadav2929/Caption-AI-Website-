@@ -44,6 +44,16 @@ There's no account or payment. Everything runs in the visitor's browser, except 
 - Very long videos (10+ minutes) use a lot of memory, because the whole audio track is decoded at once.
 - Live captions need Chrome, Edge or Safari, and their timing is approximate.
 
+## Live demo on the home page
+
+The "See it in action" section shows one clip twice (original, and with captions that restyle when a visitor taps a style). Add a short clip of your own to `site/examples/` with its captions and set `"demo"` in `manifest.json`:
+
+```json
+{ "demo": { "video": "demo.mp4", "captions": "demo.srt" }, "items": [] }
+```
+
+Until then it shows a soft animated backdrop with a sample line. Tip: make the SRT in the editor (Download SRT), then upload both files.
+
 ## Example videos on the home page
 
 The "Made with our captions" section stays hidden until `site/examples/manifest.json` lists clips. Put your own videos (or free stock clips you have the right to use, e.g. from Pexels) in `site/examples/` with their captions as `.srt`, then list them:
