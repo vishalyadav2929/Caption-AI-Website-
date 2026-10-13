@@ -6,6 +6,7 @@ import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
 import { exportWebCodecs } from './export-webcodecs.js';
+import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
@@ -158,6 +159,7 @@ function syncControls() {
   const t = tpl(), o = S.o;
   $('words').value = wordsPerCaption(); $('wordsVal').textContent = wordsPerCaption();
   syncLangPicker();
+  if (typeof syncGradeControls === 'function') syncGradeControls();
   $('size').value = Math.round((o.scale || 1) * 100); $('sizeVal').textContent = `${$('size').value}%`;
   $('weight').value = o.weight || '';
   $('caseSel').value = o.case || '';
@@ -208,13 +210,97 @@ $('hinglish').onchange = e => { S.hinglish = e.target.checked; renderSegs(); com
 
 // Panel tabs
 function showTab(which) {
-  const cap = which === 'captions';
-  $('tabCaptions').classList.toggle('on', cap); $('tabCaptions').setAttribute('aria-selected', cap);
-  $('tabStyle').classList.toggle('on', !cap); $('tabStyle').setAttribute('aria-selected', !cap);
-  $('paneCaptions').hidden = !cap; $('paneStyle').hidden = cap;
+  for (const [tab, pane, id] of [['tabCaptions', 'paneCaptions', 'captions'], ['tabStyle', 'paneStyle', 'style'], ['tabColor', 'paneColor', 'color']]) {
+    const on = which === id;
+    $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
+  }
+  if (which === 'color') refreshLookThumbs();
 }
 $('tabCaptions').onclick = () => showTab('captions');
 $('tabStyle').onclick = () => showTab('style');
+$('tabColor').onclick = () => showTab('color');
+
+// ---------- colour grading ----------
+const grader = new Grader();
+const lutCache = {};
+const grade = () => ({ ...DEFAULT_GRADE, ...(S.o.grade || {}) });
+function lutFor(look) {
+  if (look === 'none') return null;
+  if (look === 'custom') return S.customLut || null;
+  return lutCache[look] || (lutCache[look] = buildLut(LOOKS[look].fn));
+}
+/** The frame to draw: the source itself, or its graded copy when a look/adjustment is on. */
+function graded(src, w, h, g = grade()) {
+  if (!isGraded(g) || !grader.ok) return src;
+  grader.setLut(lutFor(g.look), g.look === 'custom' ? `custom:${S.customLutName}` : g.look);
+  return grader.render(src, w, h, g) || src;
+}
+const GSLIDERS = { gExp: ['exp', 100], gCon: ['con', 100], gSat: ['sat', 100], gTemp: ['temp', 100], gTint: ['tint', 100], gVig: ['vig', 100], gMix: ['mix', 100] };
+function setGrade(patch, save = true) {
+  S.o.grade = { ...grade(), ...patch };
+  syncGradeControls();
+  if (save) commit();
+}
+function syncGradeControls() {
+  const g = grade();
+  for (const [id, [k, div]] of Object.entries(GSLIDERS)) {
+    $(id).value = Math.round(g[k] * div);
+    const v = Math.round(g[k] * div);
+    $(id + 'Val').textContent = id === 'gMix' ? `${v}%` : v > 0 ? `+${v}` : String(v);
+  }
+  document.querySelectorAll('.look').forEach(b => b.classList.toggle('on', b.dataset.look === g.look));
+}
+for (const [id, [k, div]] of Object.entries(GSLIDERS)) {
+  $(id).oninput = e => setGrade({ [k]: +e.target.value / div }, false);
+  $(id).onchange = () => commit();
+}
+$('gReset').onclick = () => { S.o.grade = { ...DEFAULT_GRADE }; syncGradeControls(); commit(); };
+const LOOK_LIST = [['none', 'Original'], ...Object.entries(LOOKS).map(([id, l]) => [id, l.name])];
+function renderLooks() {
+  const box = $('looks');
+  box.innerHTML = '';
+  const list = S.customLut ? [...LOOK_LIST, ['custom', S.customLutName || 'My LUT']] : LOOK_LIST;
+  for (const [id, name] of list) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'look'; b.dataset.look = id;
+    const c = document.createElement('canvas'); c.width = 96; c.height = 120;
+    const nm = document.createElement('span'); nm.textContent = name;
+    b.append(c, nm);
+    b.onclick = () => setGrade({ look: id });
+    box.appendChild(b);
+  }
+  syncGradeControls();
+  refreshLookThumbs();
+}
+/** Each look's thumbnail shows the current video frame in that look. */
+function refreshLookThumbs() {
+  if (!grader.ok || $('paneColor').hidden) return;
+  const src = video.readyState >= 2 && video.videoWidth ? video : null;
+  document.querySelectorAll('.look canvas').forEach(c => {
+    const x = c.getContext('2d');
+    if (!src) { x.fillStyle = '#ccc'; x.fillRect(0, 0, c.width, c.height); return; }
+    const id = c.parentElement.dataset.look;
+    const out = id === 'none' ? src : graded(src, c.width, c.height, { ...DEFAULT_GRADE, look: id });
+    const vw = src.videoWidth, vh = src.videoHeight, k = Math.max(c.width / vw, c.height / vh);
+    if (out === src) x.drawImage(src, (c.width - vw * k) / 2, (c.height - vh * k) / 2, vw * k, vh * k);
+    else x.drawImage(out, 0, 0, c.width, c.height);
+  });
+}
+$('cubeIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const lut = parseCube(await f.text());
+    S.customLut = lut; S.customLutName = lut.title || f.name.replace(/\.cube$/i, '');
+    renderLooks();
+    setGrade({ look: 'custom' });
+    toast(`LUT “${S.customLutName}” added.`);
+  } catch (err) { toast(err.message || 'That file isn’t a valid .cube LUT.', 5000); }
+};
+if (!grader.ok) $('looks').insertAdjacentHTML('beforebegin', '<p class="hint">This browser can’t run colour grading (WebGL 2 is missing).</p>');
+renderLooks();
+video.addEventListener('seeked', refreshLookThumbs);
+video.addEventListener('loadeddata', refreshLookThumbs);
 
 // ---------- caption list ----------
 function setSegments(next, keepSel = true) {
@@ -1087,7 +1173,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
   const paint = t => {
     if (kind === 'alpha') xctx.clearRect(0, 0, size.w, size.h);
     else if (kind === 'green') { xctx.fillStyle = '#00FF00'; xctx.fillRect(0, 0, size.w, size.h); }
-    else if (video.readyState >= 2 && video.videoWidth) xctx.drawImage(video, 0, 0, size.w, size.h);
+    else if (video.readyState >= 2 && video.videoWidth) xctx.drawImage(graded(video, size.w, size.h), 0, 0, size.w, size.h);
     else { xctx.fillStyle = '#0d0d16'; xctx.fillRect(0, 0, size.w, size.h); }
     drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, overlay ? { ...opts, fill: null } : opts);
   };
@@ -1326,7 +1412,7 @@ function drawFrame() {
     if (S.exporting) return video.currentTime; // the export canvas does the work; the preview is covered
     const vw = video.videoWidth, vh = video.videoHeight;
     if (vw && Math.abs(W / H - vw / vh) > 0.01) fitCanvas(vw, vh);
-    if (video.readyState >= 2 && vw) ctx.drawImage(video, 0, 0, canvas.width, canvas.height); else drawPlaceholder();
+    if (video.readyState >= 2 && vw) ctx.drawImage(graded(video, canvas.width, canvas.height), 0, 0, canvas.width, canvas.height); else drawPlaceholder();
     const t = video.currentTime;
     if (!S.segments.length && S.file) {
       const st = (performance.now() / 1000) % 4.2;
@@ -1346,7 +1432,7 @@ function drawFrame() {
     // Mirror the selfie view, the way creators expect to see themselves.
     ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1);
     const vw = video.videoWidth, vh = video.videoHeight, k = Math.max(W / vw, H / vh);
-    ctx.drawImage(video, (W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k);
+    ctx.drawImage(graded(video, vw, vh), (W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k);
     ctx.restore();
     const t = liveNow();
     const words = liveFinal.slice(-40).concat(liveInterim).map(w => ({ ...w, text: transform(w.text) }));

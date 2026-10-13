@@ -152,6 +152,7 @@
       <div class="ptabs" role="tablist">
         <button class="ptab on" id="tabCaptions" role="tab" aria-selected="true" aria-controls="paneCaptions">Captions</button>
         <button class="ptab" id="tabStyle" role="tab" aria-selected="false" aria-controls="paneStyle">Style</button>
+        <button class="ptab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor">Color</button>
       </div>
       <div class="panel-b" id="paneCaptions" role="tabpanel">
         <div class="status" id="status" role="status" aria-live="polite"></div>
@@ -204,6 +205,24 @@
           <!-- Kept for the code paths that read them; the caption-language picker above replaces them. -->
           <div hidden><input type="checkbox" id="translate"><input type="checkbox" id="hinglish"><button id="trOpen"></button><h3 id="trHead"></h3><p id="trNote"></p></div>
         </details>
+      </div>
+
+      <div class="panel-b" id="paneColor" role="tabpanel" hidden>
+        <p class="hint">Colour grading for your video. Shows in the preview and in the export. <button class="link" id="gReset">Reset colour</button></p>
+        <h3 class="more-h">Look</h3>
+        <div class="looks" id="looks"></div>
+        <div class="row field file-row">
+          <label class="btn btn-sm" for="cubeIn">Import LUT (.cube)</label>
+          <input type="file" id="cubeIn" accept=".cube,text/plain" hidden>
+        </div>
+        <div class="field"><label for="gMix">Look strength <b id="gMixVal"></b></label><input type="range" id="gMix" min="0" max="100" value="100"></div>
+        <h3 class="more-h">Adjust</h3>
+        <div class="field"><label for="gExp">Exposure <b id="gExpVal"></b></label><input type="range" id="gExp" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gCon">Contrast <b id="gConVal"></b></label><input type="range" id="gCon" min="-50" max="50" value="0"></div>
+        <div class="field"><label for="gSat">Saturation <b id="gSatVal"></b></label><input type="range" id="gSat" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gTemp">Temperature <b id="gTempVal"></b></label><input type="range" id="gTemp" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gTint">Tint <b id="gTintVal"></b></label><input type="range" id="gTint" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gVig">Vignette <b id="gVigVal"></b></label><input type="range" id="gVig" min="0" max="100" value="0"></div>
       </div>
 
       <div class="panel-b" id="paneStyle" role="tabpanel" hidden>
