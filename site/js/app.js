@@ -364,6 +364,15 @@ async function loadFile(file) {
     toast('This browser can’t play that file. iPhone HEVC videos often need converting to MP4 (H.264) first.', 6500);
     return false;
   }
+  // iPhone Safari loads no picture until a video has played once, so the preview stayed black while
+  // captions were generated. Play it silently for a moment to get the first frame on screen.
+  if (video.readyState < 2) {
+    const wasMuted = video.muted;
+    video.muted = true;
+    const p = video.play();
+    const back = () => { video.pause(); video.muted = wasMuted; if (video.currentTime > 0.5) video.currentTime = 0; };
+    if (p && p.then) p.then(() => setTimeout(back, 60), () => { video.muted = wasMuted; video.currentTime = 0.001; });
+  }
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.fileURL = url;
   S.file = file;
@@ -655,7 +664,7 @@ const WORKER_SILENCE_MS = 150000;
 function runWorker(audio, { lang, task, quality }, ui) {
   getWorker();
   return new Promise((resolve, reject) => {
-    let last = Date.now();
+    let last = Date.now(), listenStart = Date.now();
     const fail = err => { clearInterval(watch); busyGen = null; if (worker) { worker.terminate(); worker = null; } reject(err); };
     const watch = setInterval(() => {
       if (Date.now() - last > WORKER_SILENCE_MS) fail(new Error('The speech model stopped responding. The phone may be low on memory: close other apps, or pick “Fast” quality under More options, and try again.'));
@@ -670,11 +679,13 @@ function runWorker(audio, { lang, task, quality }, ui) {
       if (data.type === 'download') {
         const pct = data.loaded / data.total * 100;
         ui.onText(`Loading speech model… ${fmtBytes(data.loaded)} of ${fmtBytes(data.total)} (downloaded only the first time)`); ui.onPct(pct);
-      } else if (data.type === 'status') { ui.onText(data.text); }
+      } else if (data.type === 'status') { if (/Listening/.test(data.text)) listenStart = Date.now(); ui.onText(data.text); }
       else if (data.type === 'partial') { ui.onWords && ui.onWords(data.words); }
       else if (data.type === 'noWordTiming') { noWordMem.add(data.name); try { localStorage.setItem('vcz-noword', JSON.stringify([...new Set([...noWordList(), data.name])])); } catch { /* private mode */ } }
       else if (data.type === 'transcribe') {
-        ui.onText(`Transcribing… part ${Math.min(data.done + 1, data.total)} of ${data.total}`); ui.onPct(data.done / data.total * 100);
+        // After the first part we know this phone's speed, so say roughly how long is left.
+        const left = data.done && data.done < data.total ? Math.round((Date.now() - listenStart) / data.done * (data.total - data.done) / 1000) : 0;
+        ui.onText(`Writing captions… part ${Math.min(data.done + 1, data.total)} of ${data.total}${left ? ` · about ${left} s left` : ''}`); ui.onPct(data.done / data.total * 100);
       } else if (data.type === 'error') { fail(Object.assign(new Error(data.text), { switchBuild: data.switchBuild })); }
       else if (data.type === 'done') { clearInterval(watch); busyGen = null; resolve(data); }
     };
