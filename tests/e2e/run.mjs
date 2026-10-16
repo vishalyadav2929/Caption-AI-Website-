@@ -44,6 +44,12 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { if (m.type() === 'error' && !/fonts\.g|ERR_|Failed to load resource/.test(m.text())) errors.push(m.text()); });
 const vcz = fn => page.evaluate(fn);
+// Caption styles live in the Styles tab on computers (under the video on phones).
+async function pickTpl(pg, name) {
+  if (await pg.isVisible('#ltabTpl')) await pg.click('#ltabTpl');
+  await pg.locator('#grid .tpl', { hasText: name }).first().click();
+}
+
 
 await step('start screen loads with upload card and disabled button', async () => {
   await page.goto(`${BASE}/app.html`);
@@ -88,10 +94,10 @@ await step('choosing languages starts captions automatically and opens the edito
 });
 
 await step('sample caption shows the template on the video before captions exist', async () => {
-  await page.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await pickTpl(page, 'Classic');
   await page.waitForTimeout(300);
   const a = await page.locator('#stage').screenshot();
-  await page.locator('#grid .tpl', { hasText: 'Pop-up Chat' }).first().click();
+  await pickTpl(page, 'Pop-up Chat');
   await page.waitForTimeout(300);
   const b = await page.locator('#stage').screenshot();
   assert.notDeepEqual(a, b);
@@ -175,9 +181,9 @@ await step('template change updates the real preview', async () => {
   await page.evaluate(() => { window.__vcz.S.o.pos = 0.5; });
   await page.locator('#seek').evaluate(el => { el.value = 170; el.dispatchEvent(new Event('input')); });
   await page.waitForTimeout(300);
-  await page.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await pickTpl(page, 'Classic');
   const before = await page.locator('#stage').screenshot();
-  await page.locator('#grid .tpl', { hasText: 'Pop-up Chat' }).first().click();
+  await pickTpl(page, 'Pop-up Chat');
   await page.waitForTimeout(400);
   const after = await page.locator('#stage').screenshot();
   assert.notDeepEqual(before, after);
@@ -220,7 +226,7 @@ async function doExport(kind, res = 0) {
 }
 
 await step('export: video with burned-in captions at original resolution with original audio', async () => {
-  await page.locator('#grid .tpl', { hasText: 'High Contrast' }).first().click();
+  await pickTpl(page, 'High Contrast');
   await page.waitForTimeout(200);
   const { file, streams, dur } = await doExport('video', 0);
   assert.match(streams, /video/); assert.match(streams, /audio/);
@@ -762,7 +768,7 @@ await step('manual text: typed by hand, shown all at once, drag to move, on the 
   assert.ok(Math.abs(await m.evaluate(() => window.__vcz.S.o.texts[0].y) - L.y) < 0.001, 'undo moves it back');
   // Template change keeps the text (it used to wipe sounds and colour too).
   await m.click('#ltabTpl');
-  await m.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await pickTpl(m, 'Classic');
   assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1, 'template change keeps text');
   // Export: red text in the frame at 1 s.
   await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });

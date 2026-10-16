@@ -777,3 +777,4 @@ body.studio .tl-bar .tl-pos { margin-left: auto; }
 .tool-tab { flex: 1 1 0; min-width: 38px; padding: 7px 2px 6px; font-size: 10.5px; }
 body.studio .props .ptab { font-size: 13px; white-space: nowrap; padding: 10px 6px; }
 .tool-tab span { font-size: 10px; letter-spacing: -.01em; white-space: nowrap; }
+@media (max-width: 640px) { #homeBtn .lbl { display: none; } }
