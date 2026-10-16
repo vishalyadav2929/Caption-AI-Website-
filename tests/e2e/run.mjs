@@ -858,6 +858,46 @@ await step('layout: preview left/middle/right and panel sizes are saved across r
   await ctx.close();
 });
 
+await step('home dashboard: a project is saved on the device and reopens with its captions, text and style', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 800 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  assert.equal(await m.isVisible('#startDrop'), true, 'Create project banner');
+  assert.equal(await m.locator('.proj').count(), 0);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('#ltabText'); await m.click('#txtAdd'); await m.fill('#txtText', 'Saved text'); await m.locator('#txtText').blur();
+  // Split the first caption at 0.5 s with the timeline button.
+  const before = await m.evaluate(() => window.__vcz.S.segments.length);
+  await m.evaluate(() => { window.__vczVideo.currentTime = 0.5; });
+  await m.waitForTimeout(200);
+  await m.click('.tl-acts button[data-act="split"]');
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments.length), before + 1, 'Split adds a caption');
+  await m.waitForTimeout(1500); // autosave
+  await m.click('#homeBtn');
+  await m.waitForSelector('.proj');
+  assert.equal(await m.locator('.proj').count(), 1);
+  assert.match(await m.textContent('.proj-open b'), /portrait/);
+  // Reload the page: still there, and it reopens with the edit.
+  await m.reload();
+  await m.waitForSelector('.proj');
+  await m.click('.proj-open');
+  await m.waitForSelector('#editor:not([hidden])');
+  await m.waitForFunction(() => window.__vcz.S.segments.length > 0);
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments.length), before + 1, 'captions restored');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].text), 'Saved text', 'text restored');
+  // Delete it.
+  await m.click('#homeBtn');
+  m.once('dialog', d => d.accept());
+  await m.click('.proj-del');
+  await m.waitForFunction(() => !document.querySelector('.proj'));
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
