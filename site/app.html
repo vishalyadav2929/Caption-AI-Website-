@@ -59,6 +59,7 @@
       </nav>
       <p class="dash-sec">Create</p>
       <nav class="dash-nav">
+        <label for="startFile" id="navClips"><span aria-hidden="true">🎞</span> Long video → Shorts</label>
         <label for="startFile"><span aria-hidden="true">💬</span> Auto captions</label>
         <label for="photoFile"><span aria-hidden="true">🖼</span> Text on photo</label>
         <a href="#live" class="js-live"><span aria-hidden="true">●</span> Live captions</a>
@@ -75,6 +76,7 @@
       </label>
       <input type="file" id="photoFile" accept="image/*" hidden>
       <div class="dash-cards">
+        <label class="dash-card c5" for="startFile" id="cardClips"><b>Long video → Shorts</b><span>Upload a podcast or vlog, get several 9:16 clips with hooks and captions</span><i aria-hidden="true">🎞</i></label>
         <label class="dash-card c1" for="startFile"><b>Auto captions</b><span>Hindi, Hinglish, English + 30 languages, word-by-word</span><i aria-hidden="true">💬</i></label>
         <label class="dash-card c2" for="photoFile"><b>Text on photo</b><span>Type on any photo, any font, download full size</span><i aria-hidden="true">🖼</i></label>
         <a class="dash-card c3" href="#live" id="startLive"><b>Live captions</b><span>Record with your camera, captions appear as you speak</span><i aria-hidden="true">🎥</i></a>
@@ -87,7 +89,7 @@
         <label class="dash-tool" for="startFile"><i aria-hidden="true">🔊</i><span>Sound effects</span></label>
         <label class="dash-tool" for="startFile"><i aria-hidden="true">📝</i><span>SRT subtitles</span></label>
         <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">✂️</i><span>Remove silences</span><em>Soon</em></span>
-        <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">🎞</i><span>Long video to shorts</span><em>Soon</em></span>
+        <label class="dash-tool hot" for="startFile" id="toolClips"><i aria-hidden="true">🎞</i><span>Long video to shorts</span><em>New</em></label>
         <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">🗣</i><span>AI voiceover</span><em>Soon</em></span>
         <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">📜</i><span>Script to video</span><em>Soon</em></span>
       </div>
@@ -131,7 +133,7 @@
 
     <aside class="panel tools" aria-label="Tools">
       <div class="tool-tabs" role="tablist" aria-label="Tools">
-        <button class="tool-tab on" id="ltabMedia" role="tab" aria-selected="true" aria-controls="paneMedia"><i aria-hidden="true">▣</i><span>Media</span></button><button class="tool-tab" id="tabCaptions" role="tab" aria-selected="false" aria-controls="paneCaptions"><i aria-hidden="true">💬</i><span>Captions</span></button><button class="tool-tab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText"><i aria-hidden="true">T</i><span>Text</span></button><button class="tool-tab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd"><i aria-hidden="true">♪</i><span>Audio</span></button><button class="tool-tab" id="ltabTpl" role="tab" aria-selected="false" aria-controls="paneTpl"><i aria-hidden="true">✦</i><span>Styles</span></button><button class="tool-tab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor"><i aria-hidden="true">◐</i><span>Filters</span></button><button class="tool-tab" id="ltabAdj" role="tab" aria-selected="false" aria-controls="paneAdjust"><i aria-hidden="true">☰</i><span>Adjust</span></button>
+        <button class="tool-tab on" id="ltabMedia" role="tab" aria-selected="true" aria-controls="paneMedia"><i aria-hidden="true">▣</i><span>Media</span></button><button class="tool-tab" id="ltabClips" role="tab" aria-selected="false" aria-controls="paneClips"><i aria-hidden="true">✂</i><span>Clips</span></button><button class="tool-tab" id="tabCaptions" role="tab" aria-selected="false" aria-controls="paneCaptions"><i aria-hidden="true">💬</i><span>Captions</span></button><button class="tool-tab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText"><i aria-hidden="true">T</i><span>Text</span></button><button class="tool-tab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd"><i aria-hidden="true">♪</i><span>Audio</span></button><button class="tool-tab" id="ltabTpl" role="tab" aria-selected="false" aria-controls="paneTpl"><i aria-hidden="true">✦</i><span>Styles</span></button><button class="tool-tab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor"><i aria-hidden="true">◐</i><span>Filters</span></button><button class="tool-tab" id="ltabAdj" role="tab" aria-selected="false" aria-controls="paneAdjust"><i aria-hidden="true">☰</i><span>Adjust</span></button>
       </div>
       <div class="panel-b" id="paneMedia" role="tabpanel">
         <label class="media-import" for="fileIn"><span aria-hidden="true">+</span><strong>Import</strong><small>Video, audio or photo · stays on your device</small></label>
@@ -144,6 +146,26 @@
             <button class="btn btn-sm" id="liveOpen" type="button">Live captions</button>
           </div>
           <input type="file" id="srtIn" accept=".srt,.vtt,text/plain" hidden>
+      </div>
+      <div class="panel-b" id="paneClips" role="tabpanel" hidden>
+        <div class="clip-active" id="clipActive" hidden>
+          <b>Editing a short</b> <span id="clipRange"></span>
+          <div class="row field">
+            <div><label for="clipAspect">Shape</label><select id="clipAspect"><option value="9:16">9:16 · Reels/Shorts</option><option value="1:1">1:1 · Square</option><option value="16:9">16:9 · YouTube</option></select></div>
+            <label class="check"><input type="checkbox" id="clipHook" checked> Hook on top</label>
+          </div>
+          <div class="field clip-times"><label>From <input class="t-in" id="clipStart" inputmode="decimal" aria-label="Short start time"> to <input class="t-in" id="clipEnd" inputmode="decimal" aria-label="Short end time"></label></div>
+          <div class="field"><label for="clipX">Frame position <b id="clipXVal"></b></label><input type="range" id="clipX" min="0" max="100" value="50"></div>
+          <div class="row"><button class="btn btn-sm" id="clipExit" type="button">← Full video</button><button class="btn btn-sm btn-primary" id="clipExport" type="button">Export this short</button></div>
+        </div>
+        <p class="hint">Turn a long video into Shorts. We read your captions and pick whole-sentence moments with a strong first line, lively speech and no dead air, then crop them to 9:16 with a hook title on top.</p>
+        <div class="row field clip-opts">
+          <div><label for="clipLen">Length</label><select id="clipLen"><option value="15-30">15–30 s</option><option value="20-60" selected>20–60 s</option><option value="45-90">45–90 s</option></select></div>
+          <div><label for="clipCount">How many</label><select id="clipCount"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></div>
+        </div>
+        <button class="btn btn-primary clip-find" id="clipFind" type="button">✨ Find viral clips</button>
+        <p class="clip-note" id="clipNote"></p>
+        <div class="clip-list" id="clipList"></div>
       </div>
       <div class="panel-b" id="paneCaptions" role="tabpanel" hidden>
         <div class="status" id="status" role="status" aria-live="polite"></div>

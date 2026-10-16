@@ -907,6 +907,109 @@ await step('home dashboard: a project is saved on the device and reopens with it
   await ctx.close();
 });
 
+await step('long video → shorts: finds the hook moment, crops 9:16, exports only that part (both export paths)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'long16x9.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'long16x9.srt'));
+  await m.click('#ltabClips');
+  await m.selectOption('#clipLen', '15-30');
+  await m.click('#clipFind');
+  await m.waitForSelector('.clip-card');
+  const best = await m.evaluate(() => window.__vcz.S.o.found[0]);
+  assert.equal(best.start, 20, 'best short starts on the hook sentence');
+  assert.ok(best.end - best.start >= 15 && best.end - best.start <= 30, `length ${best.end - best.start}`);
+  assert.match(best.title, /^Why do 90%/);
+  await m.locator('.clip-card').first().locator('button:has-text("Use this short")').click();
+  await m.waitForTimeout(400);
+  const [cw, ch] = await m.evaluate(() => [document.getElementById('stage').width, document.getElementById('stage').height]);
+  assert.ok(Math.abs(cw / ch - 9 / 16) < 0.02, `preview is 9:16: ${cw}x${ch}`);
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.filter(t => t.hook).length), 1, 'hook title added');
+  assert.ok(await m.locator('.clip-card').first().locator('.chip').count() >= 1, 'other hook options offered');
+  // Square, then back to 9:16.
+  await m.selectOption('#clipAspect', '1:1'); await m.waitForTimeout(300);
+  const [sw, sh] = await m.evaluate(() => [document.getElementById('stage').width, document.getElementById('stage').height]);
+  assert.equal(sw, sh, 'square preview');
+  await m.selectOption('#clipAspect', '9:16');
+  // Hook off and on.
+  await m.uncheck('#clipHook');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.filter(t => t.hook).length), 0, 'hook can be turned off');
+  await m.check('#clipHook');
+  // Move the start a little; undo puts it back.
+  await m.fill('#clipStart', '0:20.50'); await m.locator('#clipStart').press('Enter');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.clip.start), 20.5);
+  await m.fill('#clipStart', '0:20.00'); await m.locator('#clipStart').press('Enter');
+  const exportShort = async label => {
+    const dl = m.waitForEvent('download', { timeout: 120000 });
+    await m.click('#clipExport'); await m.waitForSelector('#xDlg[open]');
+    assert.match(await m.evaluate(() => document.getElementById('xRes').selectedOptions[0].textContent), /1080×1920/);
+    await m.click('#xGo');
+    const d = await dl; const file = join(OUT, `${label}-${d.suggestedFilename()}`); await d.saveAs(file);
+    await m.waitForSelector('#exportOv', { state: 'hidden' });
+    const dims = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file]).toString().trim();
+    const dec = execFileSync('sh', ['-c', `ffmpeg -i "${file}" -f null - 2>&1 | grep -o 'time=[0-9:.]*' | tail -1`]).toString();
+    const [, h, mm, sec] = dec.match(/time=(\d+):(\d+):([\d.]+)/);
+    const dur = +h * 3600 + +mm * 60 + +sec;
+    const streams = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', file]).toString();
+    console.log(`   ${label}:`, file.split('/').pop(), dims, dur.toFixed(2), 's', streams.trim().replace(/\n/g, '+'));
+    return { dims, dur, streams };
+  };
+  await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
+  const a = await exportShort('wc');
+  assert.equal(a.dims, '1080,1920');
+  assert.ok(Math.abs(a.dur - (best.end - best.start)) < 1, `WebCodecs short is ${a.dur}s`);
+  assert.match(a.streams, /audio/);
+  await m.evaluate(() => { delete window.__vczExportCodecs; window.__vczNoWebCodecs = true; });
+  const b = await exportShort('mr');
+  assert.ok(Math.abs(b.dur - (best.end - best.start)) < 1.5, `MediaRecorder short is ${b.dur}s`);
+  await m.evaluate(() => { delete window.__vczNoWebCodecs; });
+  // Back to the full video.
+  await m.click('#clipExit');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.clip), null);
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.filter(t => t.hook).length), 0, 'hook removed');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('fast export (decode → draw → encode, no real-time playback): every frame, sound kept, short trimmed, cancel works', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 800 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.addInitScript(() => { window.__vczFastCodecs = ['vp9']; }); // this Chromium has no H.264 encoder
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  const dl = m.waitForEvent('download', { timeout: 120000 });
+  await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]');
+  await m.check('input[name=xKind][value=video]'); await m.selectOption('#xRes', '0'); await m.click('#xGo');
+  const d = await dl; const file = join(OUT, 'fast-' + d.suggestedFilename()); await d.saveAs(file);
+  assert.equal(await m.evaluate(() => window.__vczLastExport), 'fast');
+  const frames = +execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', file]).toString().trim();
+  const src = +execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', join(FIX, 'portrait.webm')]).toString().trim();
+  assert.ok(frames >= src - 2, `every frame: ${frames} of ${src}`);
+  const streams = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,width,height', '-of', 'csv=p=0', file]).toString();
+  assert.match(streams, /video,540,960/); assert.match(streams, /audio/);
+  const vol = execFileSync('sh', ['-c', `ffmpeg -i "${file}" -vn -af volumedetect -f null - 2>&1 | grep -o 'mean_volume: [-0-9.]*'`]).toString();
+  assert.ok(+vol.split(':')[1] > -35, `sound kept: ${vol}`);
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', '1.2', '-i', file, '-frames:v', '1', join(OUT, 'fast-frame.png')]);
+  console.log('   fast export:', frames, 'of', src, 'frames |', streams.trim().replace(/\n/g, ' / '), '|', vol.trim(), '|', await m.textContent('#status'));
+  // Cancel in the middle.
+  await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]'); await m.click('#xGo');
+  await m.waitForSelector('#exportOv:not([hidden])');
+  await m.waitForTimeout(700);
+  await m.click('#exportCancel');
+  await m.waitForSelector('#exportOv', { state: 'hidden', timeout: 15000 });
+  assert.match(await m.textContent('#status'), /cancelled/i);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
