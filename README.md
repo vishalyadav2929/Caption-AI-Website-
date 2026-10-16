@@ -1,6 +1,6 @@
 # ViralCaptionZone
 
-A free, browser-based caption editor for Reels, Shorts and Pins. Upload a video, generate captions from its audio, fix the text and timing, pick one of 85 animated caption styles, and download the video with the captions burned in.
+A free, browser-based caption editor for Reels, Shorts and Pins. Upload a video, generate captions from its audio, fix the text and timing, pick one of 90 animated caption styles, and download the video with the captions burned in.
 
 There's no account or payment. Everything runs in the visitor's browser, except the optional **Fast mode** (below), which the site owner can switch on for instant, more accurate captions.
 
@@ -12,7 +12,7 @@ There's no account or payment. Everything runs in the visitor's browser, except 
 | Speech to text | OpenAI **Whisper** running **on the device** through **transformers.js** (WebGPU, falling back to WebAssembly). Supports Hindi, English and ~30 more languages, auto-detect, Hinglish (Roman Hindi) output, and translation to English. Long audio is cut at pauses into ≤29 s parts, which gives real progress, a working **Cancel**, and skips silent parts. |
 | Timing | Uses Whisper's word-level timestamps. If a model build only gives sentence timing, captions are marked **est.** in the editor and word highlights are spread across each sentence. |
 | Caption editing | Edit text, set start/end times, split at the cursor, merge, add, delete, jump to a caption, **undo/redo** (Ctrl+Z / Ctrl+Shift+Z). SRT/VTT import and SRT export. |
-| Templates | 85 styles: 58 matching the reference set (Classic, Crazy, Discipline, Red Wipe … Estate 4), 26 more, and High Contrast. Selecting one updates the live video preview. Previews work in English and 10 Indian scripts. |
+| Templates | 90 styles: 58 matching the reference set (Classic, Crazy, Discipline, Red Wipe … Estate 4), 26 more, High Contrast, and 5 trending looks (Green Box, Emoji Pop with auto emoji, Gradient Pop, Beast Bold, One Line Sub) under a 🔥 Trending filter. Any single word can get its own colour; captions can be forced onto one line. Selecting one updates the live video preview. Previews work in English and 10 Indian scripts. |
 | Style | Size, weight, case, text colour, spoken-word colour, outline colour and thickness, shadow, background colour and opacity, alignment, vertical position, max line width, line spacing. **Reset to template** is included. |
 | Preview | Canvas preview with play/pause, seek, time, full screen, portrait and landscape. Preview and export use the same renderer, and captions are kept inside the frame. |
 | Export | Captions are drawn into the video pixels, original audio is kept, there's a progress bar and Cancel, and the file is downloaded directly. **MP4 (H.264)** when the browser can record it, otherwise **WebM** (VP9/Opus) with a corrected duration header. |

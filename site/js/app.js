@@ -93,6 +93,7 @@ function tpl() {
   if (o.shadow != null) r.shadow = o.shadow ? { c: 'rgba(0,0,0,.7)', b: 0.18, x: 0, y: 0.05 } : null;
   if (o.bgOp != null) r.bg = o.bgOp > 0 ? { c: hexA(o.bgColor || '#000000', o.bgOp / 100), pad: 0.3, r: 0.18 } : null;
   if (o.align) r.align = o.align;
+  if (o.oneLine) r.oneLine = true;
   if (o.maxWidth) r.maxWidth = o.maxWidth;
   if (o.lineGap) r.lineGap = o.lineGap;
   return r;
@@ -119,7 +120,7 @@ function restore(s) {
   S.segments = d.segments; S.o = d.o; S.tplId = d.tplId; S.hinglish = d.hinglish;
   gallery.select(S.tplId);
   if (S.textSel && !texts().some(l => l.id === S.textSel)) S.textSel = null;
-  syncControls(); renderSegs(); syncActions(); renderTextUI(); renderClipUI();
+  syncControls(); renderSegs(); syncActions(); renderTextUI(); renderClipUI(); renderWordUI();
 }
 function undo() { if (hIdx > 0 && !S.exporting) { hIdx--; restore(hist[hIdx]); syncUndo(); } }
 function redo() { if (hIdx < hist.length - 1 && !S.exporting) { hIdx++; restore(hist[hIdx]); syncUndo(); } }
@@ -186,7 +187,7 @@ const gallery = mountGallery({
 
 // ---------- editor layout (computers): preview left / middle / right, panel sizes, saved ----------
 {
-  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 320, rw: 340, th: 230 };
+  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 300, th: 210 };
   const L = { ...DEF };
   try { Object.assign(L, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* private mode */ }
   const apply = () => {
@@ -227,7 +228,29 @@ const gallery = mountGallery({
     apply(); save(); open(false); timeline.render();
   };
   document.addEventListener('click', () => open(false));
+  // Big preview: hide the side panels (computers). Remembered with the layout.
+  const big = on => {
+    L.big = on; app.classList.toggle('big', on);
+    $('bigBtn').setAttribute('aria-pressed', on); $('bigBtn').classList.toggle('on', on);
+    save(); setTimeout(() => timeline.render(), 50);
+  };
+  $('bigBtn').onclick = () => big(!L.big);
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
+    if (!typing && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'b' && !$('editor').hidden) big(!L.big);
+  });
+  // Phones/tablets: drag the bar under the preview to make it bigger or smaller.
+  const stage = $('main'), grip = $('pvGrip');
+  const setPv = vh => { L.pvh = Math.round(Math.min(62, Math.max(24, vh))); stage.style.setProperty('--pv-h', `${L.pvh}vh`); };
+  if (L.pvh) setPv(L.pvh);
+  grip.onpointerdown = e => {
+    e.preventDefault(); grip.setPointerCapture(e.pointerId);
+    const y0 = e.clientY, h0 = $('box').getBoundingClientRect().height / innerHeight * 100;
+    grip.onpointermove = ev => setPv(h0 + (ev.clientY - y0) / innerHeight * 100);
+    grip.onpointerup = grip.onpointercancel = () => { grip.onpointermove = grip.onpointerup = grip.onpointercancel = null; save(); };
+  };
   apply();
+  if (L.big) big(true);
 }
 
 // ---------- style controls ----------
@@ -249,6 +272,8 @@ function syncControls() {
   $('pos').value = Math.round((o.pos ?? baseTpl().pos ?? 0.72) * 100); $('posVal').textContent = `${$('pos').value}%`;
   $('maxW').value = Math.round((t.maxWidth ?? 0.88) * 100); $('maxWVal').textContent = `${$('maxW').value}%`;
   $('lineGap').value = Math.round((t.lineGap ?? 1.16) * 100); $('lineGapVal').textContent = ($('lineGap').value / 100).toFixed(2);
+  const one = t.oneLine ? 'one' : 'auto';
+  $('linesCtl').querySelectorAll('button').forEach(b => { const on = b.dataset.v === one; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
   const align = t.align || 'center';
   $('alignCtl').querySelectorAll('button').forEach(b => { const on = b.dataset.v === align; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
   $('hinglish').checked = S.hinglish;
@@ -271,6 +296,10 @@ bind('strokeW', el => { S.o.strokeW = +el.value; }, el => { $('strokeWVal').text
 bind('shadow', el => { S.o.shadow = el.checked; });
 bind('bgColor', el => { S.o.bgColor = el.value; if (S.o.bgOp == null) S.o.bgOp = 60; syncControls(); });
 bind('bgOp', el => { S.o.bgOp = +el.value; }, el => { $('bgOpVal').textContent = `${el.value}%`; });
+$('linesCtl').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.o.oneLine = b.dataset.v === 'one' || null; syncControls(); commit();
+});
 $('alignCtl').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   S.o.align = b.dataset.v; syncControls(); commit();
@@ -412,6 +441,7 @@ var timeline = mountTimeline($('timeline'), {
   soundsHost: $('paneSnd'),
   openSounds: () => { showLTab('snd'); if (matchMedia('(max-width: 1100px)').matches) $('paneSnd').scrollIntoView({ block: 'start', behavior: 'smooth' }); return true; },
   addText: () => addText(),
+  selectWord: (si, wi) => { S.wordSel = si == null ? null : [si, wi]; renderWordUI(); if (si != null) showRTab('style'); },
   clip: () => S.o.clip || null,
   splitAt: t => {
     const i = C.indexAt(S.segments, t), seg = S.segments[i];
@@ -469,6 +499,15 @@ function renderTextUI() {
   $('txtTime').hidden = !!S.image;
   if (!L) return;
   if (document.activeElement !== $('txtText')) $('txtText').value = L.text;
+  const chips = $('txtChips'); chips.innerHTML = '';
+  L.text.split(/\s+/).filter(Boolean).forEach((w, i) => {
+    const c = document.createElement('button'); c.type = 'button'; c.className = 'chip' + (S.txtWord === i ? ' on' : '');
+    c.textContent = w; if (L.wordColors && L.wordColors[i]) c.style.color = L.wordColors[i];
+    c.onclick = () => { S.txtWord = S.txtWord === i ? null : i; renderTextUI(); };
+    chips.appendChild(c);
+  });
+  $('txtWordRow').hidden = S.txtWord == null;
+  if (S.txtWord != null) { $('txtWordName').textContent = L.text.split(/\s+/).filter(Boolean)[S.txtWord] || ''; $('txtWordColor').value = (L.wordColors && L.wordColors[S.txtWord]) || '#ffe600'; }
   const tp = L.tpl && TEMPLATES.find(x => x.id === L.tpl);
   $('txtTplName').textContent = tp ? tp.name : 'None (plain text)';
   $('txtTplClear').hidden = !tp;
@@ -484,6 +523,7 @@ function renderTextUI() {
   if (document.activeElement !== $('txtEnd')) $('txtEnd').value = fmtT(L.end);
 }
 function selectText(id, focus) {
+  if (S.textSel !== id) S.txtWord = null;
   S.textSel = id;
   showRTab('text'); renderTextUI(); timeline.render();
   const L = curText(); gallery.select(L && L.tpl ? L.tpl : null);
@@ -513,6 +553,15 @@ $('txtAdd').onclick = () => addText();
 $('txtAdd2').onclick = () => addText();
 $('txtTplPick').onclick = () => { showLTab('tpl'); toast('Pick a style: it goes on the selected text.'); };
 $('txtTplClear').onclick = () => patchText({ tpl: null });
+const txtWordColour = (color, save) => {
+  const L = curText(); if (!L || S.txtWord == null) return;
+  const wc = { ...(L.wordColors || {}) };
+  if (color) wc[S.txtWord] = color; else delete wc[S.txtWord];
+  patchText({ wordColors: wc }, save);
+};
+$('txtWordColor').addEventListener('input', e => txtWordColour(e.target.value, false));
+$('txtWordColor').addEventListener('change', e => txtWordColour(e.target.value, true));
+$('txtWordReset').onclick = () => txtWordColour(null, true);
 $('txtText').addEventListener('input', e => patchText({ text: e.target.value }, false));
 $('txtText').addEventListener('change', () => commit());
 $('txtFont').onchange = e => patchText({ font: e.target.value });
@@ -561,10 +610,11 @@ $('txtDel').onclick = () => {
 // same, but shown whole (one block) over the text's own time, at its own place and size.
 const tplChunkCache = new Map();
 function tplChunk(L, still) {
-  const key = `${L.text}|${L.start}|${L.end}|${still}`;
+  const key = `${L.text}|${L.start}|${L.end}|${still}|${JSON.stringify(L.wordColors || {})}`;
   let c = tplChunkCache.get(L.id);
   if (!c || c.key !== key) {
-    const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), still ? 0 : L.start, still ? 1 : L.end);
+    const wc = L.wordColors || {};
+    const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), still ? 0 : L.start, still ? 1 : L.end).map((w, i) => (wc[i] ? { ...w, color: wc[i] } : w));
     c = { key, chunk: buildChunks(words, 999, 9999)[0] || null };
     tplChunkCache.set(L.id, c);
   }
@@ -640,6 +690,33 @@ function drawTextSelection() {
   ctx.save(); ctx.setLineDash([8, 6]); ctx.lineWidth = Math.max(2, canvas.width / 400); ctx.strokeStyle = '#a78bfa';
   ctx.strokeRect(b.x0 - pad, b.y0 - pad * 0.6, b.w + pad * 2, b.h + pad * 1.2); ctx.restore();
 }
+
+// ---------- one word, its own colour ----------
+S.wordSel = null;
+const normW = w => String(w).toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+function selWord() { const [si, wi] = S.wordSel || []; return S.wordSel && S.segments[si] && S.segments[si].words[wi] || null; }
+function renderWordUI() {
+  const w = selWord();
+  $('wordGroup').hidden = !w; $('wordTip').hidden = !!w;
+  if (!w) return;
+  $('wordName').textContent = `“${transform(w.text)}”`;
+  $('wordColor').value = toHex(w.color || tpl().hiColor || tpl().color || '#FFE600');
+}
+/** Set (or clear, with null) the colour of the selected word, or of every same word. */
+function colourWord(color, save) {
+  const w = selWord(); if (!w) return;
+  const all = $('wordAll').checked, key = normW(w.text);
+  const [si, wi] = S.wordSel;
+  S.segments = S.segments.map((seg, i) => ({ ...seg, words: seg.words.map((x, j) => {
+    if (!((i === si && j === wi) || (all && normW(x.text) === key))) return x;
+    const y = { ...x }; if (color) y.color = color; else delete y.color; return y;
+  }) }));
+  timeline.render();
+  if (save) commit();
+}
+$('wordColor').addEventListener('input', e => colourWord(e.target.value, false));
+$('wordColor').addEventListener('change', e => colourWord(e.target.value, true));
+$('wordReset').onclick = () => { colourWord(null, true); renderWordUI(); };
 
 // ---------- sound effects ----------
 /** Hand-placed sounds (with their index) plus the automatic one on every caption. */

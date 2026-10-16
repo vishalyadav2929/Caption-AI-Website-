@@ -279,10 +279,12 @@
           </div>
         </div>
       </div>
+      <div class="pv-grip" id="pvGrip" role="separator" aria-orientation="horizontal" aria-label="Drag to make the preview bigger or smaller" tabindex="0"></div>
       <div class="transport" id="fileControls">
         <button class="btn btn-sm" id="playBtn" disabled aria-label="Play">▶ Play</button>
         <input type="range" class="seek" id="seek" min="0" max="1000" value="0" disabled aria-label="Seek">
         <span class="time" id="time">0:00 / 0:00</span>
+        <button class="btn btn-sm icon-btn" id="bigBtn" title="Big preview: hide the side panels (B)" aria-label="Big preview" aria-pressed="false">⤢</button>
         <button class="btn btn-sm icon-btn" id="fsBtn" title="Full screen" aria-label="Full screen">⛶</button>
         <label class="btn btn-sm" for="fileIn">Replace</label>
       </div>
@@ -310,6 +312,13 @@
       </div>
       <div class="panel-b" id="paneStyle" role="tabpanel">
         <p class="hint">Changes apply to the preview and the exported video. <button class="link" id="resetStyle">Reset to template</button></p>
+        <div class="group word-group" id="wordGroup" hidden>
+          <h3>Selected word</h3>
+          <div class="row field"><b id="wordName" class="word-name"></b><div class="color"><input type="color" id="wordColor" value="#ffe600" aria-label="Word colour"> Colour</div></div>
+          <label class="check field"><input type="checkbox" id="wordAll"> Same colour wherever this word is said</label>
+          <button class="link" id="wordReset" type="button">Reset this word</button>
+        </div>
+        <p class="hint word-tip" id="wordTip">Tip: click a word on the timeline to give just that word its own colour.</p>
         <div class="group">
           <h3>Text</h3>
           <div class="field"><label for="size">Size <b id="sizeVal"></b></label><input type="range" id="size" min="50" max="180" value="100"></div>
@@ -341,6 +350,11 @@
         </div>
         <div class="group">
           <h3>Layout</h3>
+          <div class="field"><label>Lines</label>
+            <div class="seg-ctl" id="linesCtl" role="radiogroup" aria-label="Lines">
+              <button data-v="auto" role="radio">Auto</button><button data-v="one" role="radio">One line</button>
+            </div>
+          </div>
           <div class="field"><label>Alignment</label>
             <div class="seg-ctl" id="alignCtl" role="radiogroup" aria-label="Alignment">
               <button data-v="left" role="radio">Left</button><button data-v="center" role="radio">Center</button><button data-v="right" role="radio">Right</button>
@@ -355,6 +369,10 @@
         <p class="hint" id="txtNone">Select a text on the video or timeline to edit it, or add one: <button class="link" id="txtAdd2" type="button">+ Add text</button></p>
         <div class="txt-edit" id="txtEdit" hidden>
           <label class="field" for="txtText"><span class="xlabel">Text</span><textarea id="txtText" rows="3"></textarea></label>
+          <div class="field txt-words"><label>Word colours <small>click a word</small></label>
+            <div class="txt-chips" id="txtChips"></div>
+            <div class="row" id="txtWordRow" hidden><div class="color"><input type="color" id="txtWordColor" value="#ffe600" aria-label="Colour of the selected word"> <span id="txtWordName"></span></div><button class="link" id="txtWordReset" type="button">Reset</button></div>
+          </div>
           <div class="field txt-tpl"><label>Template style</label>
             <div class="row"><b id="txtTplName">None (plain text)</b><button class="btn btn-sm" id="txtTplPick" type="button">Choose style</button><button class="btn btn-sm" id="txtTplClear" type="button" hidden>Remove</button></div>
             <small class="tpl-note">With a template, its font, colours, outline and animation are used. Size, place and timing stay yours.</small>

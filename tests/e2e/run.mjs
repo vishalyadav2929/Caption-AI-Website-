@@ -876,7 +876,7 @@ await step('layout: preview left/middle/right and panel sizes are saved across r
   await m.click('#startSkip');
   assert.equal(await m.getAttribute('#editor', 'data-lay'), 'left', 'layout remembered');
   assert.match(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), /^\d+px$/);
-  assert.notEqual(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), '230px', 'timeline size remembered');
+  assert.notEqual(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), '210px', 'timeline size remembered');
   await ctx.close();
 });
 
@@ -1019,6 +1019,49 @@ await step('fast export (decode → draw → encode, no real-time playback): eve
   await m.click('#exportCancel');
   await m.waitForSelector('#exportOv', { state: 'hidden', timeout: 15000 });
   assert.match(await m.textContent('#status'), /cancelled/i);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('one word in its own colour (captions and typed text), one-line captions, trending styles, big preview', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  // Trending filter.
+  await m.click('#ltabTpl');
+  await m.locator('#tabs .tab', { hasText: 'Trending' }).click();
+  const shown = await m.$$eval('#grid .tpl', els => els.filter(e => e.style.display !== 'none').map(e => e.title));
+  assert.ok(shown.includes('Emoji Pop') && shown.includes('Green Box') && shown.length >= 8, `trending: ${shown}`);
+  // Caption word colour.
+  await m.locator('.tw').nth(1).click();
+  assert.equal(await m.isVisible('#wordGroup'), true);
+  await m.fill('#wordColor', '#ff0000'); await m.locator('#wordColor').dispatchEvent('change');
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments[0].words[1].color), '#ff0000');
+  await m.click('#undoBtn');
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments[0].words[1].color), undefined, 'undo');
+  await m.click('#redoBtn');
+  // One line.
+  await m.click('#linesCtl button[data-v="one"]');
+  assert.equal(await m.evaluate(() => window.__vcz.tpl().oneLine), true);
+  // Typed text: colour one word.
+  await m.click('#ltabText'); await m.click('#txtAdd'); await m.fill('#txtText', 'SALE 50% OFF today'); await m.locator('#txtText').blur();
+  await m.locator('#txtChips .chip', { hasText: 'OFF' }).click();
+  await m.fill('#txtWordColor', '#00ff00'); await m.locator('#txtWordColor').dispatchEvent('change');
+  assert.deepEqual(await m.evaluate(() => window.__vcz.S.o.texts[0].wordColors), { 2: '#00ff00' });
+  // Big preview hides the side panels and makes the preview larger; remembered.
+  const before = (await m.locator('#box').boundingBox()).width;
+  await m.click('#bigBtn');
+  await m.waitForTimeout(200);
+  assert.equal(await m.isVisible('.panel.tools'), false);
+  assert.ok((await m.locator('#box').boundingBox()).width > before + 300, 'preview wider');
+  await m.reload(); await m.click('#startSkip');
+  assert.equal(await m.evaluate(() => document.getElementById('editor').classList.contains('big')), true, 'big view remembered');
+  await m.click('#bigBtn');
   assert.deepEqual(errs, []);
   await ctx.close();
 });
