@@ -560,7 +560,7 @@ body.no-scroll .nav { visibility: hidden; }
 .split, .tl-dock { display: none; }
 @media (min-width: 1101px) {
   .app { gap: 0; padding: 12px; grid-template-columns: var(--lw, 300px) 10px minmax(320px, 1fr) 10px var(--rw, 300px);
-    grid-template-rows: minmax(0, 1fr) 10px var(--th, 210px);
+    grid-template-rows: minmax(0, 1fr) 10px var(--th, 180px);
     grid-template-areas: "tools sl stage sr props" "st st st st st" "tl tl tl tl tl"; }
   .app[data-lay="left"] { grid-template-columns: minmax(320px, 1fr) 10px var(--lw, 300px) 10px var(--rw, 300px); grid-template-areas: "stage sl tools sr props" "st st st st st" "tl tl tl tl tl"; }
   .app[data-lay="right"] { grid-template-columns: var(--lw, 300px) 10px var(--rw, 300px) 10px minmax(320px, 1fr); grid-template-areas: "tools sl props sr stage" "st st st st st" "tl tl tl tl tl"; }
@@ -837,7 +837,7 @@ body.studio .props .ptab { font-size: 13px; white-space: nowrap; padding: 10px 6
   .stage[style*="--pv-h"] .canvas-box { height: var(--pv-h) !important; }
 }
 @media (min-width: 1101px) {
-  .app.big { grid-template-rows: minmax(0, 1fr) 10px min(var(--th, 210px), 170px); }
+  .app.big { grid-template-rows: minmax(0, 1fr) 10px min(var(--th, 180px), 170px); }
   .app.big .mode-switch, .app.big .drag-hint, .app.big .meta { display: none; }
 }
 
@@ -940,3 +940,14 @@ body.warping .intro-copy { transition: transform .7s ease-in, opacity .7s ease-i
 @media (prefers-reduced-motion: reduce) { .intro-title span, .intro-sub, .intro-go { animation: none !important; opacity: 1; transform: none; } }
 .intro-copy::before { content: ""; position: absolute; inset: -12% -8%; z-index: -1; background: radial-gradient(closest-side, rgba(3,8,12,.72), rgba(3,8,12,0)); }
 .dash-main, .intro { overflow-x: clip; }
+
+/* ----- Bigger preview on computers: less chrome around the video ----- */
+@media (min-width: 1101px) {
+  body.studio .stage .mode-switch { display: none; }
+  body.studio.live-mode .stage .mode-switch { display: flex; }
+  body.studio .stage .drag-hint, body.studio .stage .meta { display: none; }
+  body.studio .stage { gap: 6px; }
+  body.studio .canvas-box { border-radius: 10px; }
+  #stage { max-width: calc(100% - 8px); max-height: calc(100% - 8px); }
+  .app.big { grid-template-rows: minmax(0, 1fr) 10px min(var(--th, 180px), 140px); }
+}

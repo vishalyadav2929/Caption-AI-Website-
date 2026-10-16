@@ -156,12 +156,28 @@ const gallery = mountGallery({
   },
   onSelect: t => {
     if (S.exporting) return;
+    if (document.fonts) document.fonts.load(fontString(t, 40), 'Aa अ').catch(() => {});
     // A text is selected: the style goes on that text (like picking a text template in any editor).
     const L = curText();
     if (L) {
       patchText({ tpl: t.id });
-      if (document.fonts) document.fonts.load(fontString(t, 40), L.text || 'Aa').catch(() => {});
+      S.textTpl = t.id;
       return toast(`“${t.name}” applied to your text. To style the captions instead, click an empty spot on the video first.`, 4500);
+    }
+    // No captions (a photo, or a video without captions yet): styles are for text. Pick first, type after.
+    // Photos have no captions, so styles are for text there. On videos: when the visitor came from the
+    // Text tool, or already has text but no captions. Otherwise the style is for the captions.
+    const forText = !!S.image || S.lastTool === 'text' || (!S.segments.length && texts().length > 0);
+    if (forText && S.file) {
+      S.textTpl = t.id;
+      gallery.select(t.id);
+      if (texts().length) {
+        S.o.texts = texts().map(x => ({ ...x, tpl: t.id }));
+        commit(); renderTextUI(); timeline.render();
+        return toast(`“${t.name}” applied to your text.`);
+      }
+      addText();
+      return toast(`“${t.name}” chosen. Type your text: it appears in this style.`, 4500);
     }
     S.tplId = t.id;
     // Style overrides belong to the old template. Captions are untouched: each template shows long captions
@@ -188,9 +204,13 @@ const gallery = mountGallery({
 
 // ---------- editor layout (computers): preview left / middle / right, panel sizes, saved ----------
 {
-  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 300, th: 210 };
+  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 300, th: 180, v: 2 };
   const L = { ...DEF };
-  try { Object.assign(L, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* private mode */ }
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY)) || {};
+    // Layouts saved before the bigger-preview defaults keep only where the preview sits.
+    Object.assign(L, saved.v === 2 ? saved : { lay: saved.lay || DEF.lay, big: saved.big });
+  } catch { /* private mode */ }
   const apply = () => {
     app.dataset.lay = L.lay;
     app.style.setProperty('--lw', `${L.lw}px`); app.style.setProperty('--rw', `${L.rw}px`); app.style.setProperty('--th', `${L.th}px`);
@@ -319,6 +339,7 @@ const LTABS = [['ltabMedia', 'paneMedia', 'media'], ['ltabClips', 'paneClips', '
   ['ltabTpl', 'paneTpl', 'tpl'], ['tabColor', 'paneColor', 'color'], ['ltabAdj', 'paneAdjust', 'adjust']];
 function showLTab(which) {
   if (which === 'tpl' && matchMedia('(max-width: 1100px)').matches) which = 'captions';
+  if (which !== 'tpl') S.lastTool = which;
   for (const [tab, pane, id] of LTABS) {
     const on = which === id;
     $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
@@ -542,7 +563,7 @@ function addText() {
   let start = t < 0.3 ? 0 : t, end = S.image ? 1 : dur ? Math.min(dur, start + 3) : start + 3;
   if (dur && end - start < 1) start = Math.max(0, end - 3);
   const last = texts()[texts().length - 1];
-  const L = newLayer({ start: +start.toFixed(2), end: +end.toFixed(2), y: 0.22 + (texts().length % 5) * 0.12,
+  const L = newLayer({ start: +start.toFixed(2), end: +end.toFixed(2), y: 0.22 + (texts().length % 5) * 0.12, tpl: S.textTpl || null,
     ...(last ? { font: last.font, color: last.color, bold: last.bold, stroke: last.stroke, strokeW: last.strokeW, bg: last.bg, bgOp: last.bgOp, size: last.size } : {}) });
   S.o.texts = [...texts(), L];
   if (!video.paused) video.pause();
@@ -552,8 +573,8 @@ function addText() {
 }
 $('txtAdd').onclick = () => addText();
 $('txtAdd2').onclick = () => addText();
-$('txtTplPick').onclick = () => { showLTab('tpl'); toast('Pick a style: it goes on the selected text.'); };
-$('txtTplClear').onclick = () => patchText({ tpl: null });
+$('txtTplPick').onclick = () => { showLTab('tpl'); toast('Pick a style for your text.'); };
+$('txtTplClear').onclick = () => { S.textTpl = null; patchText({ tpl: null }); };
 const txtWordColour = (color, save) => {
   const L = curText(); if (!L || S.txtWord == null) return;
   const wc = { ...(L.wordColors || {}) };
@@ -906,7 +927,7 @@ async function loadImage(file) {
   video.pause(); video.removeAttribute('src'); video.load();
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.fileURL = url; S.file = file; S.image = img; S.wave = null; S.audioP = null;
-  if (!opening) S.projectId = null;
+  if (!opening) { S.projectId = null; Object.assign(S.o, { clip: null, found: null, texts: [], sfx: [], sfxAuto: null }); S.textSel = null; }
   S.segments = []; S.selected = -1;
   document.body.classList.add('photo');
   hist = []; hIdx = -1; commit();
@@ -955,7 +976,8 @@ async function loadFile(file) {
   S.fileURL = url;
   S.file = file;
   S.image = null; document.body.classList.remove('photo');
-  if (!opening) { S.projectId = null; S.o.clip = null; S.o.found = null; }
+  // A new file is a new project: its own text, sounds and shorts (the chosen look stays).
+  if (!opening) { S.projectId = null; Object.assign(S.o, { clip: null, found: null, texts: [], sfx: [], sfxAuto: null }); S.textSel = null; }
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
@@ -1440,6 +1462,7 @@ const liveNow = () => (performance.now() - liveT0) / 1000;
 function setMode(mode) {
   if (S.exporting || mode === S.mode) return;
   S.mode = mode;
+  document.body.classList.toggle('live-mode', mode === 'live');
   $('modeFile').classList.toggle('on', mode === 'file');
   $('modeLive').classList.toggle('on', mode === 'live');
   $('fileControls').hidden = mode !== 'file';
