@@ -1072,6 +1072,40 @@ await step('one word in its own colour (captions and typed text), one-line capti
   await ctx.close();
 });
 
+await step('pick a style first, then type: photo text and video text take the chosen style', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.setInputFiles('#startFile', join(FIX, 'photo.jpg'));
+  await m.waitForSelector('#editor:not([hidden])');
+  // The photo opens with one text. Deselect it, then pick a style: it still goes on the text.
+  await m.keyboard.press('Escape');
+  await pickTpl(m, 'Crazy');
+  assert.deepEqual(await m.evaluate(() => window.__vcz.S.o.texts.map(t => t.tpl)), ['crazy'], 'style goes on the photo text');
+  // Remove all text, pick a style first: a new text appears in that style, ready to type.
+  await m.evaluate(() => { window.__vcz.S.o.texts = []; });
+  await pickTpl(m, 'Discipline');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1, 'a text was added');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'discipline');
+  assert.equal(await m.evaluate(() => document.activeElement.id), 'txtText', 'ready to type');
+  await m.keyboard.type('hello gugs we are going home');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].text), 'hello gugs we are going home');
+  // A video without captions: from the Text tool, the style is for text; otherwise for captions.
+  await m.click('#logoLink');
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await pickTpl(m, 'Green Box');
+  assert.equal(await m.evaluate(() => window.__vcz.S.tplId), 'green-box', 'no text yet: style is for captions');
+  await m.click('#ltabText');
+  await pickTpl(m, 'Beast Bold');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1);
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'beast-bold', 'from the Text tool: style is for text');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
