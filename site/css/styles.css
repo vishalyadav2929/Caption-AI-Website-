@@ -939,3 +939,4 @@ body.warping .intro-copy { transition: transform .7s ease-in, opacity .7s ease-i
 }
 @media (prefers-reduced-motion: reduce) { .intro-title span, .intro-sub, .intro-go { animation: none !important; opacity: 1; transform: none; } }
 .intro-copy::before { content: ""; position: absolute; inset: -12% -8%; z-index: -1; background: radial-gradient(closest-side, rgba(3,8,12,.72), rgba(3,8,12,0)); }
+.dash-main, .intro { overflow-x: clip; }
