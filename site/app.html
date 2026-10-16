@@ -31,6 +31,17 @@
       <div class="row nav-actions" id="navActions" hidden>
         <button class="btn btn-sm icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
         <button class="btn btn-sm icon-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
+        <div class="lay-wrap">
+          <button class="btn btn-sm" id="layBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Arrange the editor">▦ Layout</button>
+          <div class="lay-menu" id="layMenu" hidden>
+            <b>Preview position</b>
+            <button type="button" data-lay="center">Preview in the middle</button>
+            <button type="button" data-lay="left">Preview on the left</button>
+            <button type="button" data-lay="right">Preview on the right</button>
+            <hr><button type="button" id="layReset">Reset sizes</button>
+            <small>Drag the bars between panels to resize. Your layout is saved on this device.</small>
+          </div>
+        </div>
         <button class="btn btn-sm" id="srtBtn" disabled>SRT</button>
         <button class="btn btn-primary btn-sm" id="exportBtn" disabled>Export video</button>
       </div>
@@ -42,10 +53,10 @@
     <p class="start-sub">Upload your video and generate captions. Free, and it never leaves your device.</p>
     <div class="start-card">
       <label class="start-drop" id="startDrop">
-        <input type="file" id="startFile" accept="video/*,audio/*" hidden>
+        <input type="file" id="startFile" accept="video/*,audio/*,image/*" hidden>
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
         <strong>Click or drag video here</strong>
-        <span>MP4, MOV, WEBM, M4A, MP3 · up to 2 GB · stays on your device</span>
+        <span>MP4, MOV, WEBM, M4A, MP3 · or a photo (JPG, PNG) to add text · stays on your device</span>
       </label>
       <div class="start-preview" id="startPreview" hidden>
         <video id="startVideo" controls playsinline></video>
@@ -78,13 +89,50 @@
 
   <main class="app" id="editor" hidden>
     <!-- Templates -->
-    <aside class="panel" aria-label="Templates">
-      <div class="panel-h">Templates</div>
-      <div class="panel-b">
+    <aside class="panel tools" aria-label="Templates">
+      <div class="ptabs" role="tablist" aria-label="Tools">
+        <button class="ptab on" id="ltabTpl" role="tab" aria-selected="true" aria-controls="paneTpl">Templates</button>
+        <button class="ptab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText">Text</button>
+        <button class="ptab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd">Sounds</button>
+      </div>
+      <div class="panel-b" id="paneTpl" role="tabpanel">
         <div class="tabs" id="langTabs" aria-label="Preview language"></div>
         <div class="tabs" id="tabs" aria-label="Filter styles"></div>
         <div class="grid" id="grid"></div>
       </div>
+      <div class="panel-b" id="paneText" role="tabpanel" hidden>
+        <button class="btn btn-primary txt-add" id="txtAdd" type="button">+ Add text</button>
+        <p class="hint">Type anything. It shows exactly as you type it, all at once (not word by word). Press Enter for a new line. Drag it on the video to move it.</p>
+        <div class="txt-list" id="txtList"></div>
+        <div class="txt-edit" id="txtEdit" hidden>
+          <label class="field" for="txtText"><span class="xlabel">Text</span><textarea id="txtText" rows="3"></textarea></label>
+          <div class="field"><label for="txtFont">Font</label><select id="txtFont"></select></div>
+          <div class="field"><label for="txtSize">Size <b id="txtSizeVal"></b></label><input type="range" id="txtSize" min="2" max="30" value="7"></div>
+          <div class="row field txt-style">
+            <button type="button" class="tgl" id="txtBold" aria-pressed="true"><b>B</b></button>
+            <button type="button" class="tgl" id="txtItalic" aria-pressed="false"><i>I</i></button>
+            <div class="seg-ctl" id="txtAlign" role="radiogroup" aria-label="Text alignment"><button data-v="left" role="radio">Left</button><button data-v="center" role="radio">Center</button><button data-v="right" role="radio">Right</button></div>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="txtColor" value="#ffffff" aria-label="Text colour"> Text</div>
+            <label class="check"><input type="checkbox" id="txtShadow" checked> Shadow</label>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="txtStroke" value="#000000" aria-label="Outline colour"> Outline</div>
+            <div><label for="txtStrokeW">Thickness <b id="txtStrokeWVal"></b></label><input type="range" id="txtStrokeW" min="0" max="30" value="0"></div>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="txtBg" value="#000000" aria-label="Background colour"> Box</div>
+            <div><label for="txtBgOp">Box opacity <b id="txtBgOpVal"></b></label><input type="range" id="txtBgOp" min="0" max="100" value="0"></div>
+          </div>
+          <div class="field txt-time" id="txtTime">
+            <label>Shows from <input class="t-in" id="txtStart" inputmode="decimal" aria-label="Text start time"> to <input class="t-in" id="txtEnd" inputmode="decimal" aria-label="Text end time"></label>
+            <div class="row"><button class="btn btn-sm" id="txtHere" type="button">Start at playhead</button><button class="btn btn-sm" id="txtWhole" type="button">Whole video</button></div>
+          </div>
+          <div class="row"><button class="btn btn-sm" id="txtDup" type="button">Duplicate</button><button class="btn btn-sm" id="txtDel" type="button">🗑 Delete</button></div>
+        </div>
+      </div>
+      <div class="panel-b" id="paneSnd" role="tabpanel" hidden></div>
     </aside>
 
     <!-- Stage -->
@@ -96,11 +144,11 @@
       <div class="canvas-box" id="box">
         <canvas id="stage" width="1080" height="1920" aria-label="Video preview with captions"></canvas>
         <label class="drop" id="drop">
-          <input type="file" id="fileIn" accept="video/*,audio/*,.mov,.mkv,.m4a,.mp3" hidden>
+          <input type="file" id="fileIn" accept="video/*,audio/*,image/*,.mov,.mkv,.m4a,.mp3" hidden>
           <div>
             <div class="drop-ic" aria-hidden="true">⬆</div>
-            <strong>Drop a video here</strong>
-            or click to choose · MP4, MOV, WEBM
+            <strong>Drop a video or photo here</strong>
+            or click to choose · MP4, MOV, WEBM, JPG, PNG
           </div>
         </label>
         <div class="fs-ctl">
@@ -118,15 +166,6 @@
             <div class="bar"><i id="genOvBar"></i></div>
             <button class="btn btn-primary" id="genOvTap" hidden>Tap to start captions</button>
             <button class="link" id="genOvCancel">Cancel</button>
-          </div>
-        </div>
-        <div class="export-ov" id="exportOv" hidden>
-          <div class="export-card" role="status" aria-live="polite">
-            <strong id="exportTitle">Exporting video…</strong>
-            <div class="bar"><i id="exportBar"></i></div>
-            <span id="exportText">Preparing…</span>
-            <small>Keep this tab open and visible. Export runs in real time, so it takes as long as the video.</small>
-            <button class="btn btn-sm" id="exportCancel">Cancel export</button>
           </div>
         </div>
       </div>
@@ -148,8 +187,13 @@
       </div>
     </section>
 
+    <div class="split split-v" id="splitL" role="separator" aria-orientation="vertical" aria-label="Resize tools panel"></div>
+    <div class="split split-v" id="splitR" role="separator" aria-orientation="vertical" aria-label="Resize captions panel"></div>
+    <div class="split split-h" id="splitT" role="separator" aria-orientation="horizontal" aria-label="Resize timeline"></div>
+    <div class="tl-dock" id="tlDock"></div>
+
     <!-- Captions & style -->
-    <aside class="panel" aria-label="Captions and style">
+    <aside class="panel props" aria-label="Captions and style">
       <div class="ptabs" role="tablist">
         <button class="ptab on" id="tabCaptions" role="tab" aria-selected="true" aria-controls="paneCaptions">Captions</button>
         <button class="ptab" id="tabStyle" role="tab" aria-selected="false" aria-controls="paneStyle">Style</button>
@@ -291,6 +335,15 @@
       </div>
     </form>
   </dialog>
+  <div class="export-ov" id="exportOv" hidden>
+    <div class="export-card" role="status" aria-live="polite">
+      <strong id="exportTitle">Exporting video…</strong>
+      <div class="bar"><i id="exportBar"></i></div>
+      <span id="exportText">Preparing…</span>
+      <small>Keep this tab open and visible. Export runs in real time, so it takes as long as the video.</small>
+      <button class="btn btn-sm" id="exportCancel">Cancel export</button>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
 
   <script type="module" src="js/app.js"></script>

@@ -15,6 +15,7 @@ export function mountTimeline(root, api) {
       <div class="tl-pos" role="group" aria-label="Caption position">
         <button type="button" data-pos="0.2">Top</button><button type="button" data-pos="0.5">Middle</button><button type="button" data-pos="0.78">Bottom</button>
       </div>
+      <button type="button" class="tl-addtxt">+ Text</button>
       <button type="button" class="tl-add" aria-haspopup="true">+ Sound</button>
       <span class="tl-zoom"><button type="button" data-z="-1" aria-label="Zoom out">−</button><button type="button" data-z="1" aria-label="Zoom in">+</button></span>
     </div>
@@ -23,6 +24,7 @@ export function mountTimeline(root, api) {
         <div class="tl-ruler"></div>
         <div class="tl-row tl-words"></div>
         <div class="tl-row tl-caps"></div>
+        <div class="tl-row tl-txt"></div>
         <div class="tl-row tl-sfx"></div>
         <canvas class="tl-wave" height="40"></canvas>
         <div class="tl-head"></div>
@@ -35,7 +37,7 @@ export function mountTimeline(root, api) {
     </div>
     <p class="tl-hint">Click a word to jump · double-click to fix it · Delete removes the selected word or sound</p>`;
   const $ = s => root.querySelector(s);
-  const sfxRow = $('.tl-sfx'), menu = $('.tl-menu');
+  const sfxRow = $('.tl-sfx'), txtRow = $('.tl-txt'), menu = $('.tl-menu');
   let sfxSel = null;
   (api.sounds || []).forEach(snd => {
     const row = document.createElement('div'); row.className = 'tl-snd';
@@ -46,8 +48,11 @@ export function mountTimeline(root, api) {
     row.append(play, add); $('.tl-sounds').appendChild(row);
     const o = document.createElement('option'); o.value = snd.id; o.textContent = `${snd.icon} ${snd.name}`; $('.tl-auto-sel').appendChild(o);
   });
-  $('.tl-add').onclick = () => { menu.hidden = !menu.hidden; $('.tl-auto-sel').value = api.autoSound() || ''; };
-  $('.tl-auto-sel').onchange = e => api.setAutoSound(e.target.value || null);
+  // The sound list lives in a side panel instead of under the timeline.
+  if (api.soundsHost) { api.soundsHost.appendChild(menu); menu.hidden = false; }
+  $('.tl-add').onclick = () => { menu.querySelector('.tl-auto-sel').value = api.autoSound() || ''; if (api.openSounds) api.openSounds(); else menu.hidden = !menu.hidden; };
+  $('.tl-addtxt').onclick = () => api.addText && api.addText();
+  menu.querySelector('.tl-auto-sel').onchange = e => api.setAutoSound(e.target.value || null);
   const scroll = $('.tl-scroll'), inner = $('.tl-inner'), ruler = $('.tl-ruler'), wordsRow = $('.tl-words'), capsRow = $('.tl-caps'), wave = $('.tl-wave'), head = $('.tl-head');
   let zi = 2, pps = ZOOMS[zi], fitted = false, sel = null; // sel = [si, wi]
 
@@ -55,7 +60,7 @@ export function mountTimeline(root, api) {
     const d = +(e.target.dataset.z || 0);
     if (!d) return;
     zi = Math.max(0, Math.min(ZOOMS.length - 1, zi + d)); pps = ZOOMS[zi]; fitted = true;
-    render();
+    renderNow();
   };
   root.querySelector('.tl-pos').onclick = e => { const p = e.target.dataset.pos; if (p) { api.setPos(+p); syncPos(); } };
   function syncPos() {
@@ -65,7 +70,7 @@ export function mountTimeline(root, api) {
 
   // Click on empty timeline → jump there.
   inner.addEventListener('click', e => {
-    if (e.target.closest('.tw, .tc')) return;
+    if (e.target.closest('.tw, .tc, .ttx')) return;
     const x = e.clientX - inner.getBoundingClientRect().left;
     api.seek(Math.max(0, x / pps));
   });
@@ -76,7 +81,14 @@ export function mountTimeline(root, api) {
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const [si, wi] = sel; sel = null; api.deleteWord(si, wi); }
   });
 
+  // One edit often asks for several redraws in a row (caption list, undo, sounds): build the DOM once.
+  let queued = false;
   function render() {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => { queued = false; renderNow(); });
+  }
+  function renderNow() {
     const dur = api.duration() || 0;
     if (!fitted && dur) {
       // Start zoomed so a short reel fits the width; long videos get a comfortable reading zoom.
@@ -116,7 +128,7 @@ export function mountTimeline(root, api) {
           b.contentEditable = 'true'; b.textContent = w.text; b.classList.add('editing');
           const range = document.createRange(); range.selectNodeContents(b);
           const s = getSelection(); s.removeAllRanges(); s.addRange(range);
-          const done = save => { b.contentEditable = 'false'; b.classList.remove('editing'); b.onblur = b.onkeydown = null; if (save) api.editWord(si, wi, b.textContent.trim()); else render(); };
+          const done = save => { b.contentEditable = 'false'; b.classList.remove('editing'); b.onblur = b.onkeydown = null; if (save) api.editWord(si, wi, b.textContent.trim()); else renderNow(); };
           b.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); done(true); } if (e.key === 'Escape') done(false); e.stopPropagation(); };
           b.onblur = () => done(true);
         };
@@ -131,12 +143,49 @@ export function mountTimeline(root, api) {
       b.style.left = `${fx.t * pps}px`;
       b.textContent = snd ? snd.icon : '♪';
       b.title = `${snd ? snd.name : fx.id} at ${fx.t.toFixed(2)}s${fx.auto ? ' (automatic)' : ' · Delete removes it'}`;
-      b.onclick = e => { e.stopPropagation(); api.previewSound(fx.id); if (!fx.auto) { sfxSel = fx.index; sel = null; render(); scroll.focus({ preventScroll: true }); } };
+      b.onclick = e => { e.stopPropagation(); api.previewSound(fx.id); if (!fx.auto) { sfxSel = fx.index; sel = null; renderNow(); scroll.focus({ preventScroll: true }); } };
       sfxRow.appendChild(b);
     });
+    renderTexts(dur);
     drawWave(W);
     syncPos();
     tick(api.time());
+  }
+
+  // Text layers: drag the block to move it in time, drag its right edge to change how long it shows.
+  function renderTexts(dur) {
+    txtRow.innerHTML = '';
+    const list = api.texts ? api.texts() : [];
+    txtRow.hidden = !list.length;
+    list.forEach(L => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'ttx' + (api.selectedText && api.selectedText() === L.id ? ' sel' : '');
+      b.style.left = `${L.start * pps}px`; b.style.width = `${Math.max(14, (L.end - L.start) * pps - 2)}px`;
+      b.textContent = `T ${L.text.replace(/\s+/g, ' ')}`;
+      b.title = `${L.text} · ${L.start.toFixed(2)}–${L.end.toFixed(2)}s · drag to move, drag the right edge to resize`;
+      const grip = document.createElement('i'); grip.className = 'grip'; b.appendChild(grip);
+      b.onpointerdown = e => {
+        e.stopPropagation();
+        const resize = e.target === grip, x0 = e.clientX, s0 = L.start, e0 = L.end, len = e0 - s0;
+        let moved = false;
+        b.setPointerCapture(e.pointerId);
+        b.onpointermove = ev => {
+          const dt = (ev.clientX - x0) / pps;
+          if (!moved && Math.abs(ev.clientX - x0) < 4) return;
+          moved = true;
+          if (resize) api.timeText(L.id, s0, Math.min(dur || Infinity, Math.max(s0 + 0.2, e0 + dt)), false);
+          else { const s = Math.max(0, Math.min((dur || Infinity) - len, s0 + dt)); api.timeText(L.id, s, s + len, false); }
+          const now = api.texts().find(x => x.id === L.id);
+          if (now) { b.style.left = `${now.start * pps}px`; b.style.width = `${Math.max(14, (now.end - now.start) * pps - 2)}px`; }
+        };
+        b.onpointerup = () => {
+          b.onpointermove = b.onpointerup = null;
+          if (moved) { const now = api.texts().find(x => x.id === L.id); api.timeText(L.id, now.start, now.end, true); }
+          else { api.selectText(L.id); api.seek(L.start); }
+        };
+      };
+      txtRow.appendChild(b);
+    });
   }
 
   function drawWave(W) {
@@ -163,7 +212,7 @@ export function mountTimeline(root, api) {
     if (api.playing() && (x < scroll.scrollLeft || x > scroll.scrollLeft + scroll.clientWidth - 40)) scroll.scrollLeft = Math.max(0, x - 40);
   }
 
-  return { render, tick, reset() { fitted = false; sel = null; scroll.scrollLeft = 0; } };
+  return { render, renderNow, tick, menu, reset() { fitted = false; sel = null; scroll.scrollLeft = 0; } };
 }
 
 /** Loudness peaks (0..1) every `step` seconds, for drawing the waveform. */

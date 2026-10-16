@@ -727,6 +727,135 @@ await step('phones: timeline sits below the pinned preview and its buttons can b
   }
 });
 
+const redPx = (file, ss, crop = '') => +execFileSync('sh', ['-c', `ffmpeg -v error ${ss != null ? `-ss ${ss}` : ''} -i "${file}" -frames:v 1 -vf "${crop ? crop + ',' : ''}format=rgb24" -f rawvideo - | od -An -tu1 -v -w3 | awk '$1>200 && $2<80 && $3<80' | wc -l`]).toString();
+
+await step('manual text: typed by hand, shown all at once, drag to move, on the timeline, burned into the export', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.click('#ltabText');
+  await m.click('#txtAdd');
+  await m.fill('#txtText', 'SALE 50% OFF\nAaj hi kharido');
+  await m.locator('#txtText').blur();
+  await m.fill('#txtColor', '#ff0000');
+  await m.locator('#txtColor').dispatchEvent('change');
+  const L = await m.evaluate(() => window.__vcz.S.o.texts[0]);
+  assert.equal(L.text, 'SALE 50% OFF\nAaj hi kharido', 'text kept exactly as typed');
+  assert.equal(L.color, '#ff0000');
+  assert.equal(await m.locator('.ttx').count(), 1, 'text block on the timeline');
+  // One block with both lines, drawn together.
+  const b = await m.evaluate(() => window.__vcz.S.textBoxes[0]);
+  assert.equal(b.lines.length, 2);
+  // Drag it down on the video.
+  const r = await m.locator('#stage').boundingBox();
+  const cw = await m.evaluate(() => document.getElementById('stage').width);
+  const k = r.width / cw;
+  const sx = r.x + (b.x0 + b.w / 2) * k, sy = r.y + (b.y0 + b.h / 2) * k;
+  await m.mouse.move(sx, sy); await m.mouse.down(); await m.mouse.move(sx, sy + 40, { steps: 5 }); await m.mouse.up();
+  const y2 = await m.evaluate(() => window.__vcz.S.o.texts[0].y);
+  assert.ok(y2 > L.y + 0.05, `text moved down: ${L.y} -> ${y2}`);
+  await m.click('#undoBtn');
+  assert.ok(Math.abs(await m.evaluate(() => window.__vcz.S.o.texts[0].y) - L.y) < 0.001, 'undo moves it back');
+  // Template change keeps the text (it used to wipe sounds and colour too).
+  await m.click('#ltabTpl');
+  await m.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1, 'template change keeps text');
+  // Export: red text in the frame at 1 s.
+  await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
+  const dl = m.waitForEvent('download', { timeout: 90000 });
+  await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]');
+  await m.check('input[name=xKind][value=video]'); await m.click('#xGo');
+  const d = await dl; const file = join(OUT, 'text-' + d.suggestedFilename()); await d.saveAs(file);
+  const at1 = redPx(file, 1), at5 = redPx(file, 5);
+  assert.ok(at1 > 300, `text in export at 1 s: ${at1} red px`);
+  assert.ok(at5 < 50, `text gone after its end time: ${at5} red px at 5 s`);
+  console.log('   text export: red px at 1 s', at1, '| at 5 s', at5);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('photo: open a JPG, type on it, download it at full size with the text', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.setInputFiles('#startFile', join(FIX, 'photo.jpg'));
+  await m.waitForSelector('#editor:not([hidden])');
+  assert.equal(await m.evaluate(() => document.body.classList.contains('photo')), true);
+  assert.equal(await m.isHidden('#timeline'), true, 'no timeline for a photo');
+  assert.equal(await m.isVisible('#txtText'), true, 'text editor opens straight away');
+  await m.fill('#txtText', 'Hello India');
+  await m.fill('#txtColor', '#ff0000');
+  await m.locator('#txtColor').dispatchEvent('change');
+  const dl = m.waitForEvent('download', { timeout: 30000 });
+  await m.click('#exportBtn');
+  const d = await dl; const file = join(OUT, d.suggestedFilename()); await d.saveAs(file);
+  assert.match(file, /\.jpg$/);
+  const dims = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file]).toString().trim();
+  assert.equal(dims, '1080,1350', 'full size kept');
+  const red = redPx(file, null);
+  assert.ok(red > 500, `text on the photo: ${red} red px`);
+  console.log('   photo:', file.split('/').pop(), dims, '| red px', red);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('export can be cancelled: Cancel is on screen even on a short laptop window', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 560 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  let downloads = 0; m.on('download', () => downloads++);
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
+  await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]');
+  await m.click('#xGo');
+  await m.waitForSelector('#exportOv:not([hidden])');
+  await m.waitForTimeout(800);
+  const c = await m.locator('#exportCancel').boundingBox();
+  assert.ok(c && c.y >= 0 && c.y + c.height <= 560 && c.x >= 0 && c.x + c.width <= 1280, `Cancel button on screen: ${JSON.stringify(c)}`);
+  await m.click('#exportCancel');
+  await m.waitForSelector('#exportOv', { state: 'hidden', timeout: 10000 });
+  assert.match(await m.textContent('#status'), /cancelled/i);
+  await m.waitForTimeout(500);
+  assert.equal(downloads, 0, 'nothing downloaded');
+  assert.equal(await m.isEnabled('#exportBtn'), true, 'can export again');
+  await ctx.close();
+});
+
+await step('layout: preview left/middle/right and panel sizes are saved across reloads', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  const x = async sel => (await m.locator(sel).boundingBox()).x;
+  assert.ok(await x('.panel.tools') < await x('.stage') && await x('.stage') < await x('.panel.props'), 'CapCut order by default');
+  const tl = await m.locator('#timeline').boundingBox(), st = await m.locator('.stage').boundingBox();
+  assert.ok(tl.y >= st.y + st.height - 1 && tl.width > 1200, 'timeline runs full width under the preview');
+  await m.click('#layBtn'); await m.click('[data-lay="left"]');
+  assert.ok(await x('.stage') < await x('.panel.tools'), 'preview moved to the left');
+  const h0 = (await m.locator('#timeline').boundingBox()).height;
+  const s = await m.locator('#splitT').boundingBox();
+  await m.mouse.move(s.x + s.width / 2, s.y + s.height / 2); await m.mouse.down();
+  await m.mouse.move(s.x + s.width / 2, s.y - 80, { steps: 5 }); await m.mouse.up();
+  const h1 = (await m.locator('#timeline').boundingBox()).height;
+  assert.ok(h1 > h0 + 50, `timeline taller: ${h0} -> ${h1}`);
+  await m.reload();
+  await m.click('#startSkip');
+  assert.equal(await m.getAttribute('#editor', 'data-lay'), 'left', 'layout remembered');
+  assert.match(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), /^\d+px$/);
+  assert.notEqual(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), '230px', 'timeline size remembered');
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
