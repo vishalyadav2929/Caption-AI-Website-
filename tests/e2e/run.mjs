@@ -105,6 +105,7 @@ await step('sample caption shows the template on the video before captions exist
 });
 
 await step('real-time audio fallback (used when a browser can’t decode the file) reads the full track', async () => {
+  await page.click('#tabCaptions');
   await page.evaluate(() => { window.__vczForceRealtime = true; window.__vczAudioLength = 0; window.__vczKeepAudio = true; });
   await page.evaluate(() => { document.getElementById('moreOpts').open = true; });
   await page.click('#genBtn');
@@ -136,6 +137,7 @@ await step('SRT import creates timed captions', async () => {
 });
 
 await step('edit text, split, merge, add, delete, undo, redo', async () => {
+  await page.click('#tabCaptions');
   const ta = page.locator('#segs .seg textarea').first();
   await ta.fill('this is exactly how your');
   await ta.blur();
@@ -156,6 +158,7 @@ await step('edit text, split, merge, add, delete, undo, redo', async () => {
 });
 
 await step('editing a time moves the caption', async () => {
+  await page.click('#tabCaptions');
   const inp = page.locator('#segs .seg').nth(1).locator('.t-in').first();
   await inp.fill('0:02.50');
   await inp.press('Enter');
