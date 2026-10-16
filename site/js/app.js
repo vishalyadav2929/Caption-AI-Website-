@@ -10,6 +10,7 @@ import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './g
 import { mountTimeline, wavePeaks } from './timeline.js';
 import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
 import { TEXT_FONTS, newLayer, drawLayers, hitLayer } from './text-layers.js';
+import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
@@ -109,6 +110,7 @@ function commit() {
   if (hist.length > 100) hist.shift();
   hIdx = hist.length - 1;
   syncUndo();
+  scheduleSave();
 }
 function restore(s) {
   const d = JSON.parse(s);
@@ -160,7 +162,7 @@ const gallery = mountGallery({
     // The timeline would make the pinned preview too tall on phones: put it in the page flow below it.
     if (mq.matches) $('main').after($('timeline')); else $('tlDock').appendChild($('timeline'));
     $('editor').classList.toggle('no-tl', mq.matches || $('timeline').hidden);
-    if (mq.matches && $('ltabTpl').classList.contains('on')) showLTab('text');
+    if (mq.matches && $('ltabTpl').classList.contains('on')) showLTab('captions');
   };
   if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
   place();
@@ -168,7 +170,7 @@ const gallery = mountGallery({
 
 // ---------- editor layout (computers): preview left / middle / right, panel sizes, saved ----------
 {
-  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 340, th: 230 };
+  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 320, rw: 340, th: 230 };
   const L = { ...DEF };
   try { Object.assign(L, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* private mode */ }
   const apply = () => {
@@ -266,29 +268,28 @@ $('words').addEventListener('change', e => {
 });
 $('hinglish').onchange = e => { S.hinglish = e.target.checked; renderSegs(); commit(); };
 
-// Left panel tabs: Templates · Text · Sounds. On phones the templates sit under the video instead.
+// Left: tools (what to add). Right: details of what's selected. On phones the styles sit under the video.
+const LTABS = [['ltabMedia', 'paneMedia', 'media'], ['tabCaptions', 'paneCaptions', 'captions'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd'],
+  ['ltabTpl', 'paneTpl', 'tpl'], ['tabColor', 'paneColor', 'color'], ['ltabAdj', 'paneAdjust', 'adjust']];
 function showLTab(which) {
-  if (which === 'tpl' && matchMedia('(max-width: 1100px)').matches) which = 'text';
-  for (const [tab, pane, id] of [['ltabTpl', 'paneTpl', 'tpl'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd']]) {
-    const on = which === id;
-    $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
-  }
-}
-$('ltabTpl').onclick = () => showLTab('tpl');
-$('ltabText').onclick = () => showLTab('text');
-$('ltabSnd').onclick = () => showLTab('snd');
-
-// Panel tabs
-function showTab(which) {
-  for (const [tab, pane, id] of [['tabCaptions', 'paneCaptions', 'captions'], ['tabStyle', 'paneStyle', 'style'], ['tabColor', 'paneColor', 'color']]) {
+  if (which === 'tpl' && matchMedia('(max-width: 1100px)').matches) which = 'captions';
+  for (const [tab, pane, id] of LTABS) {
     const on = which === id;
     $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
   }
   if (which === 'color') refreshLookThumbs();
 }
-$('tabCaptions').onclick = () => showTab('captions');
-$('tabStyle').onclick = () => showTab('style');
-$('tabColor').onclick = () => showTab('color');
+LTABS.forEach(([tab, , id]) => { $(tab).onclick = () => showLTab(id); });
+const RTABS = [['tabStyle', 'paneStyle', 'style'], ['tabTxt', 'paneTxtProps', 'text'], ['tabInfo', 'paneInfo', 'info']];
+function showRTab(which) {
+  for (const [tab, pane, id] of RTABS) {
+    const on = which === id;
+    $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
+  }
+  if (which === 'info') renderInfo();
+}
+RTABS.forEach(([tab, , id]) => { $(tab).onclick = () => showRTab(id); });
+function showTab(which) { if (which === 'style') showRTab('style'); else showLTab(which); }
 
 // ---------- colour grading ----------
 const grader = new Grader();
@@ -395,6 +396,17 @@ var timeline = mountTimeline($('timeline'), {
   soundsHost: $('paneSnd'),
   openSounds: () => { showLTab('snd'); if (matchMedia('(max-width: 1100px)').matches) $('paneSnd').scrollIntoView({ block: 'start', behavior: 'smooth' }); return true; },
   addText: () => addText(),
+  splitAt: t => {
+    const i = C.indexAt(S.segments, t), seg = S.segments[i];
+    const at = seg ? seg.words.filter(w => w.start < t).length : 0;
+    if (!seg || at <= 0 || at >= seg.words.length) return toast('Move the playhead inside a caption, between two words, then press Split.');
+    const arr = S.segments.slice(); arr.splice(i, 1, ...C.split(seg, at)); setSegments(arr);
+  },
+  deleteSelected: () => {
+    if (S.textSel) return $('txtDel').click();
+    if (S.selected >= 0 && S.segments[S.selected]) { const arr = S.segments.slice(); arr.splice(S.selected, 1); setSegments(arr, false); return toast('Caption deleted. Press Ctrl+Z to undo.'); }
+    toast('Select a word, caption, text or sound first.');
+  },
   texts: () => texts(),
   selectedText: () => S.textSel,
   selectText: id => selectText(id),
@@ -436,7 +448,7 @@ function renderTextUI() {
     list.appendChild(b);
   });
   const L = curText();
-  $('txtEdit').hidden = !L;
+  $('txtEdit').hidden = !L; $('txtNone').hidden = !!L;
   $('txtTime').hidden = !!S.image;
   if (!L) return;
   if (document.activeElement !== $('txtText')) $('txtText').value = L.text;
@@ -452,7 +464,7 @@ function renderTextUI() {
 }
 function selectText(id, focus) {
   S.textSel = id;
-  showLTab('text'); renderTextUI(); timeline.render();
+  showRTab('text'); renderTextUI(); timeline.render();
   if (focus) { $('txtText').focus(); $('txtText').select(); }
 }
 function patchText(p, save = true) {
@@ -464,7 +476,7 @@ function patchText(p, save = true) {
 }
 function addText() {
   const dur = mediaDur(), t = S.image ? 0 : video.currentTime || 0;
-  let start = t, end = S.image ? 1 : dur ? Math.min(dur, t + 3) : t + 3;
+  let start = t < 0.3 ? 0 : t, end = S.image ? 1 : dur ? Math.min(dur, start + 3) : start + 3;
   if (dur && end - start < 1) start = Math.max(0, end - 3);
   const last = texts()[texts().length - 1];
   const L = newLayer({ start: +start.toFixed(2), end: +end.toFixed(2), y: 0.22 + (texts().length % 5) * 0.12,
@@ -472,9 +484,11 @@ function addText() {
   S.o.texts = [...texts(), L];
   if (!video.paused) video.pause();
   commit();
+  showLTab('text');
   selectText(L.id, true);
 }
 $('txtAdd').onclick = () => addText();
+$('txtAdd2').onclick = () => addText();
 $('txtText').addEventListener('input', e => patchText({ text: e.target.value }, false));
 $('txtText').addEventListener('change', () => commit());
 $('txtFont').onchange = e => patchText({ font: e.target.value });
@@ -715,6 +729,7 @@ async function loadImage(file) {
   video.pause(); video.removeAttribute('src'); video.load();
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.fileURL = url; S.file = file; S.image = img; S.wave = null; S.audioP = null;
+  if (!opening) S.projectId = null;
   S.segments = []; S.selected = -1;
   document.body.classList.add('photo');
   hist = []; hIdx = -1; commit();
@@ -724,7 +739,9 @@ async function loadImage(file) {
   $('meta').textContent = `${file.name} · ${img.naturalWidth}×${img.naturalHeight} · photo · ${fmtBytes(file.size)}`;
   $('time').textContent = 'Photo';
   renderSegs(); syncActions(); refreshLookThumbs();
-  if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); }
+  if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); showRTab('text'); }
+  renderMedia();
+  if (!opening) createProject(file, 'photo');
   status('Photo loaded. Type your text on the left, drag it on the photo, then press Export.');
   return true;
 }
@@ -761,6 +778,7 @@ async function loadFile(file) {
   S.fileURL = url;
   S.file = file;
   S.image = null; document.body.classList.remove('photo');
+  if (!opening) S.projectId = null;
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
@@ -774,6 +792,9 @@ async function loadFile(file) {
   const meta = fileMeta();
   $('meta').textContent = meta;
   status(`Loaded “${file.name}”.`);
+  renderMedia();
+  showLTab('captions');
+  if (!opening) createProject(file, 'video');
   if (video.duration > 600) toast('Long video: transcription and export both take a while. Under 3 minutes works best.', 6000);
   renderSegs(); syncActions();
   return true;
@@ -1800,11 +1821,121 @@ document.addEventListener('keydown', e => {
   else if (e.key === ' ' && !typing && document.activeElement.tagName !== 'BUTTON' && !$('editor').hidden) { e.preventDefault(); togglePlay(); }
 });
 
+// ---------- projects (saved on this device) ----------
+S.projectId = null;
+var opening = false; // true while a saved project is being reopened: don't create a new one
+async function createProject(file, kind) {
+  const id = S.projectId = newId(), now = Date.now();
+  await putProject({ id, name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name, type: file.type, size: file.size, kind, created: now, updated: now, dur: 0, thumb: null, state: null, hasFile: false });
+  const stored = await putProjectFile(id, file);
+  if (stored) await patchProject(id, { hasFile: true });
+  else toast('Project saved, but this device has no room to keep the video itself. Keep the original file to reopen it.', 6500);
+  scheduleSave();
+}
+let saveTimer = null;
+function scheduleSave() {
+  if (!S.projectId || opening) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 900);
+}
+function makeThumb() {
+  try {
+    const k = 240 / Math.max(canvas.width, canvas.height), c = document.createElement('canvas');
+    c.width = Math.round(canvas.width * k); c.height = Math.round(canvas.height * k);
+    c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.72);
+  } catch { return null; }
+}
+async function saveNow() {
+  clearTimeout(saveTimer);
+  if (!S.projectId || S.exporting) return;
+  await patchProject(S.projectId, { state: snap(), thumb: makeThumb(), dur: S.image ? 0 : (isFinite(video.duration) ? video.duration : 0) });
+}
+video.addEventListener('loadeddata', () => setTimeout(scheduleSave, 300));
+async function openProject(id) {
+  const p = await getProject(id);
+  if (!p) return renderProjects();
+  const blob = p.hasFile ? await getProjectFile(id) : null;
+  if (!blob) return toast('This project’s video isn’t stored on this device. Start a new project with the original file.', 6500);
+  const file = blob instanceof File ? blob : new File([blob], p.fileName || p.name, { type: p.type || blob.type });
+  opening = true;
+  try {
+    if (!(await loadFile(file))) return;
+    S.projectId = id;
+    if (p.state) { restore(p.state); hist = [p.state]; hIdx = 0; syncUndo(); }
+    openEditor();
+    showLTab(S.image ? 'text' : 'captions');
+    status(`Opened “${p.name}”.`);
+  } finally { opening = false; }
+}
+async function renderProjects() {
+  const list = await listProjects(), grid = $('projGrid');
+  grid.innerHTML = '';
+  $('projEmpty').hidden = list.length > 0;
+  $('projCount').textContent = list.length ? `· ${list.length}` : '';
+  for (const p of list) {
+    const card = document.createElement('div'); card.className = 'proj';
+    const open = document.createElement('button'); open.type = 'button'; open.className = 'proj-open';
+    const th = document.createElement('div'); th.className = 'proj-thumb';
+    if (p.thumb) { const im = document.createElement('img'); im.src = p.thumb; im.alt = ''; th.appendChild(im); }
+    if (p.dur) { const d = document.createElement('span'); d.textContent = fmt(p.dur); th.appendChild(d); }
+    const nm = document.createElement('b'); nm.textContent = p.name;
+    const sm = document.createElement('small');
+    sm.textContent = `${p.kind === 'photo' ? 'Photo' : 'Video'} · ${new Date(p.updated).toLocaleDateString()} · ${fmtBytes(p.size || 0)}${p.hasFile ? '' : ' · file not stored'}`;
+    open.append(th, nm, sm);
+    open.onclick = () => openProject(p.id);
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'proj-del'; del.textContent = '🗑';
+    del.title = 'Delete project'; del.setAttribute('aria-label', `Delete ${p.name}`);
+    del.onclick = async () => { if (!confirm(`Delete “${p.name}” from this device?`)) return; await deleteProject(p.id); if (S.projectId === p.id) S.projectId = null; renderProjects(); };
+    card.append(open, del);
+    grid.appendChild(card);
+  }
+}
+function goHome() {
+  if (S.exporting) return toast('Wait for the export to finish (or cancel it) first.');
+  if (genRunning) return toast('Captions are still being made. Cancel them first, or wait a moment.');
+  video.pause();
+  if (S.mode === 'live') setMode('file');
+  saveNow().then(renderProjects);
+  $('editor').hidden = true; $('navActions').hidden = true;
+  $('newProj').hidden = true; $('start').hidden = false;
+  renderProjects();
+}
+$('homeBtn').onclick = goHome;
+
+// ---------- media + details panels ----------
+function renderMedia() {
+  $('mediaCard').hidden = !S.file;
+  if (!S.file) return;
+  $('mediaName').textContent = S.file.name;
+  $('mediaInfo').textContent = S.image ? `${S.image.naturalWidth}×${S.image.naturalHeight} · photo · ${fmtBytes(S.file.size)}` : fileMeta().split(' · ').slice(1).join(' · ');
+  const c = $('mediaThumb'), x = c.getContext('2d'), src = S.image || video;
+  const w = src.naturalWidth || src.videoWidth, h = src.naturalHeight || src.videoHeight;
+  x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height);
+  if (w && (S.image || video.readyState >= 2)) { const k = Math.min(c.width / w, c.height / h); x.drawImage(src, (c.width - w * k) / 2, (c.height - h * k) / 2, w * k, h * k); }
+}
+video.addEventListener('loadeddata', () => setTimeout(renderMedia, 100));
+function renderInfo() {
+  const rows = [];
+  if (S.file) {
+    rows.push(['Name', S.file.name]);
+    rows.push(['Type', S.image ? 'Photo' : 'Video']);
+    rows.push(['Resolution', S.image ? `${S.image.naturalWidth}×${S.image.naturalHeight}` : video.videoWidth ? `${video.videoWidth}×${video.videoHeight}` : 'audio only']);
+    if (!S.image) rows.push(['Duration', fmt(video.duration)]);
+    rows.push(['Size', fmtBytes(S.file.size)]);
+  } else rows.push(['Project', 'No media yet']);
+  rows.push(['Captions', String(S.segments.length)], ['Texts', String(texts().length)], ['Sounds', String(allSounds().length)]);
+  rows.push(['Saved', S.projectId ? 'On this device (automatic)' : 'Not saved']);
+  const dl = $('infoList'); dl.innerHTML = '';
+  for (const [k, v] of rows) { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); }
+}
+
 // ---------- start screen: upload → languages → generate ----------
 function openEditor() {
-  $('start').hidden = true;
+  $('start').hidden = true; $('newProj').hidden = true;
   $('editor').hidden = false;
   $('navActions').hidden = false;
+  timeline.render();
 }
 
 // A small accessible searchable dropdown.
@@ -1966,7 +2097,7 @@ async function startFile(file) {
   if (isImage(file)) { if (await loadImage(file)) openEditor(); return; }
   if (!(await loadFile(file))) return;
   $('startVideo').src = S.fileURL;
-  $('startDrop').hidden = true;
+  $('newProj').hidden = false;
   $('startPreview').hidden = false;
   $('startMeta').textContent = fileMeta();
   preloadModel($('startModel').value);
@@ -1984,7 +2115,8 @@ $('startRemove').onclick = () => {
   video.removeAttribute('src'); video.load();
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.file = null; S.fileURL = null; S.segments = [];
-  $('startPreview').hidden = true; $('startDrop').hidden = false; $('startMeta').textContent = '';
+  $('startPreview').hidden = true; $('newProj').hidden = true; $('startMeta').textContent = '';
+  if (S.projectId) { deleteProject(S.projectId); S.projectId = null; renderProjects(); }
   $('drop').classList.remove('hide');
   renderSegs(); syncActions(); syncStart();
 };
@@ -1992,6 +2124,9 @@ $('startGo').onclick = () => beginFromStart();
 $('startCancel').onclick = () => cancelTranscribe();
 $('startLive').onclick = e => { e.preventDefault(); openEditor(); setMode('live'); };
 $('startSkip').onclick = e => { e.preventDefault(); openEditor(); };
+$('photoFile').onchange = e => { startFile(e.target.files[0]); e.target.value = ''; };
+document.querySelectorAll('.js-live').forEach(a => { a.onclick = e => { e.preventDefault(); openEditor(); setMode('live'); }; });
+document.querySelector('[data-go="top"]').onclick = e => { e.preventDefault(); scrollTo({ top: 0, behavior: 'smooth' }); };
 
 window.addEventListener('beforeunload', e => {
   if (S.exporting || busyGen) { e.preventDefault(); e.returnValue = ''; }
@@ -2000,6 +2135,7 @@ window.addEventListener('pagehide', () => { if (S.fileURL) URL.revokeObjectURL(S
 
 // ---------- boot ----------
 renderTextUI();
+renderProjects();
 syncControls();
 renderSegs();
 syncActions();

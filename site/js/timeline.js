@@ -12,6 +12,7 @@ export function mountTimeline(root, api) {
   root.innerHTML = `
     <div class="tl-bar">
       <span class="tl-title">Timeline</span>
+      <span class="tl-acts"><button type="button" data-act="split" title="Split the caption at the playhead">✂ Split</button><button type="button" data-act="del" title="Delete the selected word, caption, text or sound">🗑 Delete</button></span>
       <div class="tl-pos" role="group" aria-label="Caption position">
         <button type="button" data-pos="0.2">Top</button><button type="button" data-pos="0.5">Middle</button><button type="button" data-pos="0.78">Bottom</button>
       </div>
@@ -61,6 +62,15 @@ export function mountTimeline(root, api) {
     if (!d) return;
     zi = Math.max(0, Math.min(ZOOMS.length - 1, zi + d)); pps = ZOOMS[zi]; fitted = true;
     renderNow();
+  };
+  root.querySelector('.tl-acts').onclick = e => {
+    const act = e.target.closest('button') && e.target.closest('button').dataset.act;
+    if (act === 'split') api.splitAt(api.time());
+    if (act === 'del') {
+      if (sfxSel != null) { const i = sfxSel; sfxSel = null; api.deleteSound(i); }
+      else if (sel) { const [si, wi] = sel; sel = null; api.deleteWord(si, wi); }
+      else api.deleteSelected();
+    }
   };
   root.querySelector('.tl-pos').onclick = e => { const p = e.target.dataset.pos; if (p) { api.setPos(+p); syncPos(); } };
   function syncPos() {

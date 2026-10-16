@@ -23,12 +23,13 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
+<body class="studio">
   <a class="skip" href="#main">Skip to content</a>
   <nav class="nav">
     <div class="wrap" style="max-width:none">
       <a class="logo" href="index.html"><span class="logo-mark">VC</span><span>ViralCaption<b>Zone</b></span></a>
       <div class="row nav-actions" id="navActions" hidden>
+        <button class="btn btn-sm" id="homeBtn" type="button" title="Back to your projects" aria-label="Projects">⌂<span class="lbl"> Projects</span></button>
         <button class="btn btn-sm icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
         <button class="btn btn-sm icon-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
         <div class="lay-wrap">
@@ -48,16 +49,54 @@
     </div>
   </nav>
 
-  <section class="start" id="start" aria-labelledby="startTitle">
-    <h1 id="startTitle">Create <span>Captioned</span> Reels</h1>
-    <p class="start-sub">Upload your video and generate captions. Free, and it never leaves your device.</p>
-    <div class="start-card">
-      <label class="start-drop" id="startDrop">
+  <section class="dash" id="start" aria-labelledby="startTitle">
+    <aside class="dash-side" aria-label="Main">
+      <a class="dash-brand" href="index.html"><span class="logo-mark">VC</span><span>ViralCaption<b>Zone</b></span></a>
+      <nav class="dash-nav">
+        <a class="on" href="#" data-go="top"><span aria-hidden="true">⌂</span> Home</a>
+        <a href="#projects" data-go="projects"><span aria-hidden="true">▤</span> My projects</a>
+        <a href="index.html#styles"><span aria-hidden="true">✦</span> Caption styles</a>
+      </nav>
+      <p class="dash-sec">Create</p>
+      <nav class="dash-nav">
+        <label for="startFile"><span aria-hidden="true">💬</span> Auto captions</label>
+        <label for="photoFile"><span aria-hidden="true">🖼</span> Text on photo</label>
+        <a href="#live" class="js-live"><span aria-hidden="true">●</span> Live captions</a>
+      </nav>
+      <div class="dash-foot"><a href="privacy.html">Privacy</a> · <a href="index.html#faq">Help</a><br><small>Free · no watermark · your video stays on your device</small></div>
+    </aside>
+    <div class="dash-main">
+      <h1 id="startTitle" class="sr-only">ViralCaptionZone studio</h1>
+      <label class="dash-create" id="startDrop">
         <input type="file" id="startFile" accept="video/*,audio/*,image/*" hidden>
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
-        <strong>Click or drag video here</strong>
-        <span>MP4, MOV, WEBM, M4A, MP3 · or a photo (JPG, PNG) to add text · stays on your device</span>
+        <span class="dash-plus" aria-hidden="true">+</span>
+        <strong>Create project</strong>
+        <span>Drop a video or photo here, or click to choose · MP4, MOV, WEBM, JPG, PNG · up to 2 GB</span>
       </label>
+      <input type="file" id="photoFile" accept="image/*" hidden>
+      <div class="dash-cards">
+        <label class="dash-card c1" for="startFile"><b>Auto captions</b><span>Hindi, Hinglish, English + 30 languages, word-by-word</span><i aria-hidden="true">💬</i></label>
+        <label class="dash-card c2" for="photoFile"><b>Text on photo</b><span>Type on any photo, any font, download full size</span><i aria-hidden="true">🖼</i></label>
+        <a class="dash-card c3" href="#live" id="startLive"><b>Live captions</b><span>Record with your camera, captions appear as you speak</span><i aria-hidden="true">🎥</i></a>
+        <a class="dash-card c4" href="#" id="startSkip"><b>Blank project</b><span>Open the editor and add media later</span><i aria-hidden="true">✚</i></a>
+      </div>
+      <h2 class="dash-h">More tools</h2>
+      <div class="dash-tools">
+        <label class="dash-tool" for="startFile"><i aria-hidden="true">🌐</i><span>Translate captions</span></label>
+        <label class="dash-tool" for="startFile"><i aria-hidden="true">🎨</i><span>Colour grading &amp; LUTs</span></label>
+        <label class="dash-tool" for="startFile"><i aria-hidden="true">🔊</i><span>Sound effects</span></label>
+        <label class="dash-tool" for="startFile"><i aria-hidden="true">📝</i><span>SRT subtitles</span></label>
+        <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">✂️</i><span>Remove silences</span><em>Soon</em></span>
+        <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">🎞</i><span>Long video to shorts</span><em>Soon</em></span>
+        <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">🗣</i><span>AI voiceover</span><em>Soon</em></span>
+        <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">📜</i><span>Script to video</span><em>Soon</em></span>
+      </div>
+      <h2 class="dash-h" id="projects">Projects <small id="projCount"></small></h2>
+      <div class="proj-grid" id="projGrid"></div>
+      <p class="proj-empty" id="projEmpty">Your projects appear here and are saved on this device. Nothing is uploaded.</p>
+    </div>
+    <div class="np-ov" id="newProj" hidden>
+      <div class="start-card" role="dialog" aria-modal="true" aria-label="New project">
       <div class="start-preview" id="startPreview" hidden>
         <video id="startVideo" controls playsinline></video>
         <button class="start-remove" id="startRemove" type="button" aria-label="Remove video">✕</button>
@@ -84,55 +123,104 @@
       <p class="start-msg" id="startMsg" role="status" aria-live="polite"></p>
       <p class="start-note">Pick the languages once; next time captions start the moment you upload. The first run downloads the speech model from Hugging Face (one time, then cached). Your video itself is never uploaded. <a href="privacy.html">Privacy</a></p>
     </div>
-    <p class="start-alt"><a href="#live" id="startLive">Or caption live with your camera →</a> · <a href="#" id="startSkip">Skip to editor</a></p>
+    </div>
   </section>
 
   <main class="app" id="editor" hidden>
     <!-- Templates -->
-    <aside class="panel tools" aria-label="Templates">
-      <div class="ptabs" role="tablist" aria-label="Tools">
-        <button class="ptab on" id="ltabTpl" role="tab" aria-selected="true" aria-controls="paneTpl">Templates</button>
-        <button class="ptab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText">Text</button>
-        <button class="ptab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd">Sounds</button>
+
+    <aside class="panel tools" aria-label="Tools">
+      <div class="tool-tabs" role="tablist" aria-label="Tools">
+        <button class="tool-tab on" id="ltabMedia" role="tab" aria-selected="true" aria-controls="paneMedia"><i aria-hidden="true">▣</i><span>Media</span></button><button class="tool-tab" id="tabCaptions" role="tab" aria-selected="false" aria-controls="paneCaptions"><i aria-hidden="true">💬</i><span>Captions</span></button><button class="tool-tab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText"><i aria-hidden="true">T</i><span>Text</span></button><button class="tool-tab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd"><i aria-hidden="true">♪</i><span>Audio</span></button><button class="tool-tab" id="ltabTpl" role="tab" aria-selected="false" aria-controls="paneTpl"><i aria-hidden="true">✦</i><span>Styles</span></button><button class="tool-tab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor"><i aria-hidden="true">◐</i><span>Filters</span></button><button class="tool-tab" id="ltabAdj" role="tab" aria-selected="false" aria-controls="paneAdjust"><i aria-hidden="true">☰</i><span>Adjust</span></button>
       </div>
-      <div class="panel-b" id="paneTpl" role="tabpanel">
-        <div class="tabs" id="langTabs" aria-label="Preview language"></div>
-        <div class="tabs" id="tabs" aria-label="Filter styles"></div>
-        <div class="grid" id="grid"></div>
+      <div class="panel-b" id="paneMedia" role="tabpanel">
+        <label class="media-import" for="fileIn"><span aria-hidden="true">+</span><strong>Import</strong><small>Video, audio or photo · stays on your device</small></label>
+        <div class="media-card" id="mediaCard" hidden><canvas id="mediaThumb" width="160" height="90"></canvas><div><b id="mediaName"></b><small id="mediaInfo"></small></div></div>
+          <h3 class="more-h">Subtitles &amp; more</h3>
+          <div class="row field file-row">
+            <label class="btn btn-sm" for="fileIn">Use another video</label>
+            <label class="btn btn-sm" for="srtIn">Import SRT</label>
+            <button class="btn btn-sm" id="srtOut" type="button">Download SRT</button>
+            <button class="btn btn-sm" id="liveOpen" type="button">Live captions</button>
+          </div>
+          <input type="file" id="srtIn" accept=".srt,.vtt,text/plain" hidden>
       </div>
+      <div class="panel-b" id="paneCaptions" role="tabpanel" hidden>
+        <div class="status" id="status" role="status" aria-live="polite"></div>
+        <div class="cap-bar" id="capBar" hidden>
+          <label for="trTarget">Caption language</label>
+          <div class="row tr-row">
+            <select id="trTarget" aria-label="Caption language"></select>
+            <button class="btn btn-primary btn-sm" id="trBtn" hidden>Change</button>
+          </div>
+          <div class="row words-row">
+            <label class="inline" for="words">Words on screen <b id="wordsVal"></b></label>
+            <input type="range" id="words" min="1" max="8" value="3">
+          </div>
+        </div>
+        <div class="panel-h sub-h">
+          <span>Captions <small id="segCount"></small></span>
+          <button class="btn btn-sm" id="addSeg">+ Add</button>
+        </div>
+        <div class="segs" id="segs"></div>
+        <details class="gen more" id="moreOpts">
+          <summary>More options</summary>
+          <h3 class="more-h">Make captions again</h3>
+          <div class="field">
+            <label for="lang">Language spoken in the video</label>
+            <select id="lang"></select>
+          </div>
+          <div id="fileOnly">
+            <div class="field">
+              <label for="model">AI quality</label>
+              <select id="model">
+                <option value="fast">Fast · ~40 MB</option>
+                <option value="balanced" selected>Balanced · ~80 MB</option>
+                <option value="best">Best for Hindi · 250–400 MB</option>
+              </select>
+            </div>
+            <label class="check field" id="cloudRow" hidden><input type="checkbox" id="cloudMode" checked> ⚡ Fast mode (sends the audio, never the video, to our speech server)</label>
+            <div class="row">
+              <button class="btn btn-primary" id="genBtn" disabled>Make captions again</button>
+              <button class="btn" id="genCancel" hidden>Cancel</button>
+            </div>
+          </div>
+          <!-- Kept for the code paths that read them; the caption-language picker above replaces them. -->
+          <div hidden><input type="checkbox" id="translate"><input type="checkbox" id="hinglish"><button id="trOpen"></button><h3 id="trHead"></h3><p id="trNote"></p></div>
+        </details>
+      </div>
+
       <div class="panel-b" id="paneText" role="tabpanel" hidden>
         <button class="btn btn-primary txt-add" id="txtAdd" type="button">+ Add text</button>
         <p class="hint">Type anything. It shows exactly as you type it, all at once (not word by word). Press Enter for a new line. Drag it on the video to move it.</p>
         <div class="txt-list" id="txtList"></div>
-        <div class="txt-edit" id="txtEdit" hidden>
-          <label class="field" for="txtText"><span class="xlabel">Text</span><textarea id="txtText" rows="3"></textarea></label>
-          <div class="field"><label for="txtFont">Font</label><select id="txtFont"></select></div>
-          <div class="field"><label for="txtSize">Size <b id="txtSizeVal"></b></label><input type="range" id="txtSize" min="2" max="30" value="7"></div>
-          <div class="row field txt-style">
-            <button type="button" class="tgl" id="txtBold" aria-pressed="true"><b>B</b></button>
-            <button type="button" class="tgl" id="txtItalic" aria-pressed="false"><i>I</i></button>
-            <div class="seg-ctl" id="txtAlign" role="radiogroup" aria-label="Text alignment"><button data-v="left" role="radio">Left</button><button data-v="center" role="radio">Center</button><button data-v="right" role="radio">Right</button></div>
-          </div>
-          <div class="row field">
-            <div class="color"><input type="color" id="txtColor" value="#ffffff" aria-label="Text colour"> Text</div>
-            <label class="check"><input type="checkbox" id="txtShadow" checked> Shadow</label>
-          </div>
-          <div class="row field">
-            <div class="color"><input type="color" id="txtStroke" value="#000000" aria-label="Outline colour"> Outline</div>
-            <div><label for="txtStrokeW">Thickness <b id="txtStrokeWVal"></b></label><input type="range" id="txtStrokeW" min="0" max="30" value="0"></div>
-          </div>
-          <div class="row field">
-            <div class="color"><input type="color" id="txtBg" value="#000000" aria-label="Background colour"> Box</div>
-            <div><label for="txtBgOp">Box opacity <b id="txtBgOpVal"></b></label><input type="range" id="txtBgOp" min="0" max="100" value="0"></div>
-          </div>
-          <div class="field txt-time" id="txtTime">
-            <label>Shows from <input class="t-in" id="txtStart" inputmode="decimal" aria-label="Text start time"> to <input class="t-in" id="txtEnd" inputmode="decimal" aria-label="Text end time"></label>
-            <div class="row"><button class="btn btn-sm" id="txtHere" type="button">Start at playhead</button><button class="btn btn-sm" id="txtWhole" type="button">Whole video</button></div>
-          </div>
-          <div class="row"><button class="btn btn-sm" id="txtDup" type="button">Duplicate</button><button class="btn btn-sm" id="txtDel" type="button">🗑 Delete</button></div>
-        </div>
       </div>
       <div class="panel-b" id="paneSnd" role="tabpanel" hidden></div>
+      <div class="panel-b" id="paneTpl" role="tabpanel" hidden>
+        <div class="tabs" id="langTabs" aria-label="Preview language"></div>
+        <div class="tabs" id="tabs" aria-label="Filter styles"></div>
+        <div class="grid" id="grid"></div>
+      </div>
+      <div class="panel-b" id="paneColor" role="tabpanel" hidden>
+        <p class="hint">Colour grading for your video. Shows in the preview and in the export. <button class="link" id="gReset">Reset colour</button></p>
+        <h3 class="more-h">Look</h3>
+        <div class="looks" id="looks"></div>
+        <div class="row field file-row">
+          <label class="btn btn-sm" for="cubeIn">Import LUT (.cube)</label>
+          <input type="file" id="cubeIn" accept=".cube,text/plain" hidden>
+        </div>
+        <div class="field"><label for="gMix">Look strength <b id="gMixVal"></b></label><input type="range" id="gMix" min="0" max="100" value="100"></div>
+      </div>
+      <div class="panel-b" id="paneAdjust" role="tabpanel" hidden>
+        <p class="hint">Fine-tune the picture. Shows in the preview and the export.</p>
+        <h3 class="more-h">Adjust</h3>
+        <div class="field"><label for="gExp">Exposure <b id="gExpVal"></b></label><input type="range" id="gExp" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gCon">Contrast <b id="gConVal"></b></label><input type="range" id="gCon" min="-50" max="50" value="0"></div>
+        <div class="field"><label for="gSat">Saturation <b id="gSatVal"></b></label><input type="range" id="gSat" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gTemp">Temperature <b id="gTempVal"></b></label><input type="range" id="gTemp" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gTint">Tint <b id="gTintVal"></b></label><input type="range" id="gTint" min="-100" max="100" value="0"></div>
+        <div class="field"><label for="gVig">Vignette <b id="gVigVal"></b></label><input type="range" id="gVig" min="0" max="100" value="0"></div>
+      </div>
     </aside>
 
     <!-- Stage -->
@@ -192,85 +280,13 @@
     <div class="split split-h" id="splitT" role="separator" aria-orientation="horizontal" aria-label="Resize timeline"></div>
     <div class="tl-dock" id="tlDock"></div>
 
-    <!-- Captions & style -->
-    <aside class="panel props" aria-label="Captions and style">
-      <div class="ptabs" role="tablist">
-        <button class="ptab on" id="tabCaptions" role="tab" aria-selected="true" aria-controls="paneCaptions">Captions</button>
-        <button class="ptab" id="tabStyle" role="tab" aria-selected="false" aria-controls="paneStyle">Style</button>
-        <button class="ptab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor">Color</button>
+    <aside class="panel props" aria-label="Details">
+      <div class="ptabs" role="tablist" aria-label="Details">
+        <button class="ptab on" id="tabStyle" role="tab" aria-selected="true" aria-controls="paneStyle">Caption style</button>
+        <button class="ptab" id="tabTxt" role="tab" aria-selected="false" aria-controls="paneTxtProps">Text</button>
+        <button class="ptab" id="tabInfo" role="tab" aria-selected="false" aria-controls="paneInfo">Details</button>
       </div>
-      <div class="panel-b" id="paneCaptions" role="tabpanel">
-        <div class="status" id="status" role="status" aria-live="polite"></div>
-        <div class="cap-bar" id="capBar" hidden>
-          <label for="trTarget">Caption language</label>
-          <div class="row tr-row">
-            <select id="trTarget" aria-label="Caption language"></select>
-            <button class="btn btn-primary btn-sm" id="trBtn" hidden>Change</button>
-          </div>
-          <div class="row words-row">
-            <label class="inline" for="words">Words on screen <b id="wordsVal"></b></label>
-            <input type="range" id="words" min="1" max="8" value="3">
-          </div>
-        </div>
-        <div class="panel-h sub-h">
-          <span>Captions <small id="segCount"></small></span>
-          <button class="btn btn-sm" id="addSeg">+ Add</button>
-        </div>
-        <div class="segs" id="segs"></div>
-        <details class="gen more" id="moreOpts">
-          <summary>More options</summary>
-          <h3 class="more-h">Make captions again</h3>
-          <div class="field">
-            <label for="lang">Language spoken in the video</label>
-            <select id="lang"></select>
-          </div>
-          <div id="fileOnly">
-            <div class="field">
-              <label for="model">AI quality</label>
-              <select id="model">
-                <option value="fast">Fast · ~40 MB</option>
-                <option value="balanced" selected>Balanced · ~80 MB</option>
-                <option value="best">Best for Hindi · 250–400 MB</option>
-              </select>
-            </div>
-            <label class="check field" id="cloudRow" hidden><input type="checkbox" id="cloudMode" checked> ⚡ Fast mode (sends the audio, never the video, to our speech server)</label>
-            <div class="row">
-              <button class="btn btn-primary" id="genBtn" disabled>Make captions again</button>
-              <button class="btn" id="genCancel" hidden>Cancel</button>
-            </div>
-          </div>
-          <h3 class="more-h">Files</h3>
-          <div class="row field file-row">
-            <label class="btn btn-sm" for="fileIn">Use another video</label>
-            <label class="btn btn-sm" for="srtIn">Import SRT</label>
-            <button class="btn btn-sm" id="srtOut" type="button">Download SRT</button>
-            <button class="btn btn-sm" id="liveOpen" type="button">Live captions</button>
-          </div>
-          <input type="file" id="srtIn" accept=".srt,.vtt,text/plain" hidden>
-          <!-- Kept for the code paths that read them; the caption-language picker above replaces them. -->
-          <div hidden><input type="checkbox" id="translate"><input type="checkbox" id="hinglish"><button id="trOpen"></button><h3 id="trHead"></h3><p id="trNote"></p></div>
-        </details>
-      </div>
-
-      <div class="panel-b" id="paneColor" role="tabpanel" hidden>
-        <p class="hint">Colour grading for your video. Shows in the preview and in the export. <button class="link" id="gReset">Reset colour</button></p>
-        <h3 class="more-h">Look</h3>
-        <div class="looks" id="looks"></div>
-        <div class="row field file-row">
-          <label class="btn btn-sm" for="cubeIn">Import LUT (.cube)</label>
-          <input type="file" id="cubeIn" accept=".cube,text/plain" hidden>
-        </div>
-        <div class="field"><label for="gMix">Look strength <b id="gMixVal"></b></label><input type="range" id="gMix" min="0" max="100" value="100"></div>
-        <h3 class="more-h">Adjust</h3>
-        <div class="field"><label for="gExp">Exposure <b id="gExpVal"></b></label><input type="range" id="gExp" min="-100" max="100" value="0"></div>
-        <div class="field"><label for="gCon">Contrast <b id="gConVal"></b></label><input type="range" id="gCon" min="-50" max="50" value="0"></div>
-        <div class="field"><label for="gSat">Saturation <b id="gSatVal"></b></label><input type="range" id="gSat" min="-100" max="100" value="0"></div>
-        <div class="field"><label for="gTemp">Temperature <b id="gTempVal"></b></label><input type="range" id="gTemp" min="-100" max="100" value="0"></div>
-        <div class="field"><label for="gTint">Tint <b id="gTintVal"></b></label><input type="range" id="gTint" min="-100" max="100" value="0"></div>
-        <div class="field"><label for="gVig">Vignette <b id="gVigVal"></b></label><input type="range" id="gVig" min="0" max="100" value="0"></div>
-      </div>
-
-      <div class="panel-b" id="paneStyle" role="tabpanel" hidden>
+      <div class="panel-b" id="paneStyle" role="tabpanel">
         <p class="hint">Changes apply to the preview and the exported video. <button class="link" id="resetStyle">Reset to template</button></p>
         <div class="group">
           <h3>Text</h3>
@@ -312,6 +328,40 @@
           <div class="field"><label for="maxW">Max line width <b id="maxWVal"></b></label><input type="range" id="maxW" min="40" max="96" value="88"></div>
           <div class="field"><label for="lineGap">Line spacing <b id="lineGapVal"></b></label><input type="range" id="lineGap" min="70" max="180" value="116"></div>
         </div>
+      </div>
+      <div class="panel-b" id="paneTxtProps" role="tabpanel" hidden>
+        <p class="hint" id="txtNone">Select a text on the video or timeline to edit it, or add one: <button class="link" id="txtAdd2" type="button">+ Add text</button></p>
+        <div class="txt-edit" id="txtEdit" hidden>
+          <label class="field" for="txtText"><span class="xlabel">Text</span><textarea id="txtText" rows="3"></textarea></label>
+          <div class="field"><label for="txtFont">Font</label><select id="txtFont"></select></div>
+          <div class="field"><label for="txtSize">Size <b id="txtSizeVal"></b></label><input type="range" id="txtSize" min="2" max="30" value="7"></div>
+          <div class="row field txt-style">
+            <button type="button" class="tgl" id="txtBold" aria-pressed="true"><b>B</b></button>
+            <button type="button" class="tgl" id="txtItalic" aria-pressed="false"><i>I</i></button>
+            <div class="seg-ctl" id="txtAlign" role="radiogroup" aria-label="Text alignment"><button data-v="left" role="radio">Left</button><button data-v="center" role="radio">Center</button><button data-v="right" role="radio">Right</button></div>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="txtColor" value="#ffffff" aria-label="Text colour"> Text</div>
+            <label class="check"><input type="checkbox" id="txtShadow" checked> Shadow</label>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="txtStroke" value="#000000" aria-label="Outline colour"> Outline</div>
+            <div><label for="txtStrokeW">Thickness <b id="txtStrokeWVal"></b></label><input type="range" id="txtStrokeW" min="0" max="30" value="0"></div>
+          </div>
+          <div class="row field">
+            <div class="color"><input type="color" id="txtBg" value="#000000" aria-label="Background colour"> Box</div>
+            <div><label for="txtBgOp">Box opacity <b id="txtBgOpVal"></b></label><input type="range" id="txtBgOp" min="0" max="100" value="0"></div>
+          </div>
+          <div class="field txt-time" id="txtTime">
+            <label>Shows from <input class="t-in" id="txtStart" inputmode="decimal" aria-label="Text start time"> to <input class="t-in" id="txtEnd" inputmode="decimal" aria-label="Text end time"></label>
+            <div class="row"><button class="btn btn-sm" id="txtHere" type="button">Start at playhead</button><button class="btn btn-sm" id="txtWhole" type="button">Whole video</button></div>
+          </div>
+          <div class="row"><button class="btn btn-sm" id="txtDup" type="button">Duplicate</button><button class="btn btn-sm" id="txtDel" type="button">🗑 Delete</button></div>
+        </div>
+      </div>
+      <div class="panel-b" id="paneInfo" role="tabpanel" hidden>
+        <dl class="info" id="infoList"><dt>Project</dt><dd>—</dd></dl>
+        <p class="hint">Everything runs in your browser. Your video is never uploaded.</p>
       </div>
     </aside>
   </main>

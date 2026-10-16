@@ -44,6 +44,12 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { if (m.type() === 'error' && !/fonts\.g|ERR_|Failed to load resource/.test(m.text())) errors.push(m.text()); });
 const vcz = fn => page.evaluate(fn);
+// Caption styles live in the Styles tab on computers (under the video on phones).
+async function pickTpl(pg, name) {
+  if (await pg.isVisible('#ltabTpl')) await pg.click('#ltabTpl');
+  await pg.locator('#grid .tpl', { hasText: name }).first().click();
+}
+
 
 await step('start screen loads with upload card and disabled button', async () => {
   await page.goto(`${BASE}/app.html`);
@@ -88,10 +94,10 @@ await step('choosing languages starts captions automatically and opens the edito
 });
 
 await step('sample caption shows the template on the video before captions exist', async () => {
-  await page.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await pickTpl(page, 'Classic');
   await page.waitForTimeout(300);
   const a = await page.locator('#stage').screenshot();
-  await page.locator('#grid .tpl', { hasText: 'Pop-up Chat' }).first().click();
+  await pickTpl(page, 'Pop-up Chat');
   await page.waitForTimeout(300);
   const b = await page.locator('#stage').screenshot();
   assert.notDeepEqual(a, b);
@@ -99,6 +105,7 @@ await step('sample caption shows the template on the video before captions exist
 });
 
 await step('real-time audio fallback (used when a browser can’t decode the file) reads the full track', async () => {
+  await page.click('#tabCaptions');
   await page.evaluate(() => { window.__vczForceRealtime = true; window.__vczAudioLength = 0; window.__vczKeepAudio = true; });
   await page.evaluate(() => { document.getElementById('moreOpts').open = true; });
   await page.click('#genBtn');
@@ -130,6 +137,7 @@ await step('SRT import creates timed captions', async () => {
 });
 
 await step('edit text, split, merge, add, delete, undo, redo', async () => {
+  await page.click('#tabCaptions');
   const ta = page.locator('#segs .seg textarea').first();
   await ta.fill('this is exactly how your');
   await ta.blur();
@@ -150,6 +158,7 @@ await step('edit text, split, merge, add, delete, undo, redo', async () => {
 });
 
 await step('editing a time moves the caption', async () => {
+  await page.click('#tabCaptions');
   const inp = page.locator('#segs .seg').nth(1).locator('.t-in').first();
   await inp.fill('0:02.50');
   await inp.press('Enter');
@@ -175,9 +184,9 @@ await step('template change updates the real preview', async () => {
   await page.evaluate(() => { window.__vcz.S.o.pos = 0.5; });
   await page.locator('#seek').evaluate(el => { el.value = 170; el.dispatchEvent(new Event('input')); });
   await page.waitForTimeout(300);
-  await page.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await pickTpl(page, 'Classic');
   const before = await page.locator('#stage').screenshot();
-  await page.locator('#grid .tpl', { hasText: 'Pop-up Chat' }).first().click();
+  await pickTpl(page, 'Pop-up Chat');
   await page.waitForTimeout(400);
   const after = await page.locator('#stage').screenshot();
   assert.notDeepEqual(before, after);
@@ -220,7 +229,7 @@ async function doExport(kind, res = 0) {
 }
 
 await step('export: video with burned-in captions at original resolution with original audio', async () => {
-  await page.locator('#grid .tpl', { hasText: 'High Contrast' }).first().click();
+  await pickTpl(page, 'High Contrast');
   await page.waitForTimeout(200);
   const { file, streams, dur } = await doExport('video', 0);
   assert.match(streams, /video/); assert.match(streams, /audio/);
@@ -762,7 +771,7 @@ await step('manual text: typed by hand, shown all at once, drag to move, on the 
   assert.ok(Math.abs(await m.evaluate(() => window.__vcz.S.o.texts[0].y) - L.y) < 0.001, 'undo moves it back');
   // Template change keeps the text (it used to wipe sounds and colour too).
   await m.click('#ltabTpl');
-  await m.locator('#grid .tpl', { hasText: 'Classic' }).first().click();
+  await pickTpl(m, 'Classic');
   assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1, 'template change keeps text');
   // Export: red text in the frame at 1 s.
   await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
@@ -855,6 +864,46 @@ await step('layout: preview left/middle/right and panel sizes are saved across r
   assert.equal(await m.getAttribute('#editor', 'data-lay'), 'left', 'layout remembered');
   assert.match(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), /^\d+px$/);
   assert.notEqual(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), '230px', 'timeline size remembered');
+  await ctx.close();
+});
+
+await step('home dashboard: a project is saved on the device and reopens with its captions, text and style', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 800 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  assert.equal(await m.isVisible('#startDrop'), true, 'Create project banner');
+  assert.equal(await m.locator('.proj').count(), 0);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('#ltabText'); await m.click('#txtAdd'); await m.fill('#txtText', 'Saved text'); await m.locator('#txtText').blur();
+  // Split the first caption at 0.5 s with the timeline button.
+  const before = await m.evaluate(() => window.__vcz.S.segments.length);
+  await m.evaluate(() => { window.__vczVideo.currentTime = 0.5; });
+  await m.waitForTimeout(200);
+  await m.click('.tl-acts button[data-act="split"]');
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments.length), before + 1, 'Split adds a caption');
+  await m.waitForTimeout(1500); // autosave
+  await m.click('#homeBtn');
+  await m.waitForSelector('.proj');
+  assert.equal(await m.locator('.proj').count(), 1);
+  assert.match(await m.textContent('.proj-open b'), /portrait/);
+  // Reload the page: still there, and it reopens with the edit.
+  await m.reload();
+  await m.waitForSelector('.proj');
+  await m.click('.proj-open');
+  await m.waitForSelector('#editor:not([hidden])');
+  await m.waitForFunction(() => window.__vcz.S.segments.length > 0);
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments.length), before + 1, 'captions restored');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].text), 'Saved text', 'text restored');
+  // Delete it.
+  await m.click('#homeBtn');
+  m.once('dialog', d => d.accept());
+  await m.click('.proj-del');
+  await m.waitForFunction(() => !document.querySelector('.proj'));
+  assert.deepEqual(errs, []);
   await ctx.close();
 });
 
