@@ -51,6 +51,16 @@
   </nav>
 
   <section class="dash" id="start" aria-labelledby="startTitle">
+    <header class="intro" id="intro">
+      <canvas class="intro-fx" id="introFx" aria-hidden="true"></canvas>
+      <div class="intro-copy">
+        <p class="intro-kicker">AI VIDEO STUDIO · FREE · IN YOUR BROWSER</p>
+        <p class="intro-title" aria-hidden="true"><span>EDIT.</span> <span>CAPTION.</span> <span class="hot">GO VIRAL.</span></p>
+        <p class="intro-sub">Captions in Hindi, Hinglish &amp; 30+ languages · 90 viral styles · Long video → Shorts · Export with no watermark</p>
+        <button class="intro-go" id="introGo" type="button"><span>CLICK HERE</span><i aria-hidden="true">→</i></button>
+        <p class="intro-hint" aria-hidden="true">or scroll ↓</p>
+      </div>
+    </header>
     <aside class="dash-side" aria-label="Main">
       <a class="dash-brand" href="./"><span class="logo-mark">VC</span><span>ViralCaption<b>Zone</b></span></a>
       <nav class="dash-nav">
@@ -69,7 +79,21 @@
       <div class="dash-foot"><a href="privacy.html">Privacy</a> · <a href="about.html#faq">Help</a><br><small>Free · no watermark · your video stays on your device</small></div>
     </aside>
     <div class="dash-main">
-      <h1 id="startTitle" class="sr-only">ViralCaptionZone studio</h1>
+      <section class="dash-hero">
+        <div class="hero-copy">
+          <span class="hero-pill"><i class="dot" aria-hidden="true"></i> Free · No watermark · Made for Indian creators</span>
+          <h1 id="startTitle">Make <span class="grad-text">viral Reels</span> in minutes, right in your browser</h1>
+          <p>Auto captions in Hindi, Hinglish, English and 30+ languages, 90 animated caption styles, your own text, sounds, colour filters, and long video → Shorts. Your video is never uploaded.</p>
+          <ul class="hero-stats">
+            <li><b data-count="90">90</b><span>caption styles</span></li>
+            <li><b data-count="30">30+</b><span>languages</span></li>
+            <li><b>₹0</b><span>no sign-up</span></li>
+          </ul>
+        </div>
+        <div class="hero-phones" aria-hidden="true">
+          <canvas class="phone ph1"></canvas><canvas class="phone ph2"></canvas><canvas class="phone ph3"></canvas>
+        </div>
+      </section>
       <label class="dash-create" id="startDrop">
         <input type="file" id="startFile" accept="video/*,audio/*,image/*" hidden>
         <span class="dash-plus" aria-hidden="true">+</span>
@@ -84,6 +108,15 @@
         <a class="dash-card c3" href="#live" id="startLive"><b>Live captions</b><span>Record with your camera, captions appear as you speak</span><i aria-hidden="true">🎥</i></a>
         <a class="dash-card c4" href="#" id="startSkip"><b>Blank project</b><span>Open the editor and add media later</span><i aria-hidden="true">✚</i></a>
       </div>
+      <h2 class="dash-h reveal">How it works</h2>
+      <ol class="how reveal">
+        <li><i aria-hidden="true">⬆</i><b>Upload</b><span>Drop a video or photo. It stays on your device.</span></li>
+        <li><i aria-hidden="true">✨</i><b>Auto captions</b><span>Word-by-word, synced to the speech, in your language.</span></li>
+        <li><i aria-hidden="true">🎨</i><b>Style &amp; edit</b><span>Trending styles, colour any word, add text, sounds and filters.</span></li>
+        <li><i aria-hidden="true">⬇</i><b>Export</b><span>Original-quality MP4 for Reels and Shorts. No watermark.</span></li>
+      </ol>
+      <h2 class="dash-h reveal">🔥 Trending caption styles <a class="dash-more" href="templates.html">See all 90 →</a></h2>
+      <div class="trend-strip reveal" id="trendStrip"></div>
       <h2 class="dash-h">More tools</h2>
       <div class="dash-tools">
         <label class="dash-tool" for="startFile"><i aria-hidden="true">🌐</i><span>Translate captions</span></label>
@@ -98,6 +131,13 @@
       <h2 class="dash-h" id="projects">Projects <small id="projCount"></small></h2>
       <div class="proj-grid" id="projGrid"></div>
       <p class="proj-empty" id="projEmpty">Your projects appear here and are saved on this device. Nothing is uploaded.</p>
+      <h2 class="dash-h reveal">Questions</h2>
+      <div class="dash-faq reveal">
+        <details><summary>Is it really free? Is there a watermark?</summary><p>Yes, free, with no sign-up and no watermark. Export as many videos as you like.</p></details>
+        <details><summary>Is my video uploaded anywhere?</summary><p>No. Captions, editing and export all run inside your browser. Optional fast/AI features send only audio clips or caption text, never the video. See <a href="privacy.html">Privacy</a>.</p></details>
+        <details><summary>Does it understand Hindi and Hinglish?</summary><p>Yes: Hindi in Devanagari, Hinglish in Roman letters, English and 30+ more. Short or noisy clips can have mistakes; every word can be fixed by hand.</p></details>
+        <details><summary>Which phones and computers work?</summary><p>Chrome or Edge on a computer is fastest. Android Chrome and iPhone Safari work too; use "Balanced" quality on phones.</p></details>
+      </div>
     </div>
     <div class="np-ov" id="newProj" hidden>
       <div class="start-card" role="dialog" aria-modal="true" aria-label="New project">

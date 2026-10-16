@@ -2,7 +2,8 @@ import { TEMPLATES, FONTS_URL, loadTemplateFonts, fontString } from './templates
 import { buildChunks, findChunk, drawCaption, spreadWords } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
 import { detectTextLang, onlineTranslate, looksEnglish } from './translate.js';
-import { mountGallery } from './gallery.js';
+import { mountGallery, mountPhone } from './gallery.js';
+import { mountIntro } from './intro.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
 import { exportWebCodecs } from './export-webcodecs.js';
@@ -2521,6 +2522,47 @@ window.addEventListener('beforeunload', e => {
   if (S.exporting || busyGen) { e.preventDefault(); e.returnValue = ''; }
 });
 window.addEventListener('pagehide', () => { if (S.fileURL) URL.revokeObjectURL(S.fileURL); });
+
+// ---------- home: live demo phones, trending strip, reveal-on-scroll ----------
+{
+  // Cinematic intro: CLICK HERE → warp speed → straight into the studio's Create project.
+  const intro = mountIntro($('introFx'));
+  $('introGo').onclick = () => {
+    intro.go(1000);
+    document.body.classList.add('warping');
+    setTimeout(() => {
+      document.body.classList.remove('warping');
+      $('startDrop').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('startDrop').classList.add('call'); setTimeout(() => $('startDrop').classList.remove('call'), 2200);
+    }, 750);
+  };
+  const demo = [['ph1', 'crazy', 'ye trick sabko pata honi chahiye', 280], ['ph2', 'emoji-pop', 'paisa bachao aur khush raho', 330], ['ph3', 'green-box', 'this is how reels go viral', 200]];
+  for (const [cls, id, text, hue] of demo) { const c = document.querySelector(`.hero-phones .${cls}`); if (c) mountPhone(c, id, text, hue, { scene: true, w: 270, h: 480 }); }
+  const strip = $('trendStrip');
+  const lines = ['sabse badi galti yahi hai', 'this changed everything', 'paise kaise bachaye', 'wait for the end', 'ye mat karna kabhi', 'how i grew 10x'];
+  TEMPLATES.filter(t => t.tags.includes('trending')).forEach((t, i) => {
+    const card = document.createElement('label'); card.className = 'trend-card'; card.htmlFor = 'startFile'; card.title = `Use ${t.name}`;
+    const c = document.createElement('canvas'); card.appendChild(c);
+    const nm = document.createElement('span'); nm.textContent = t.name; card.appendChild(nm);
+    card.addEventListener('click', () => { S.tplId = t.id; gallery.select(t.id); });
+    strip.appendChild(card);
+    mountPhone(c, t.id, lines[i % lines.length], (i * 47 + 200) % 360, { scene: true, w: 180, h: 320 });
+  });
+  // Slow auto-scroll of the strip; stops while the visitor touches or hovers it.
+  let hold = false;
+  ['pointerenter', 'touchstart', 'focusin'].forEach(ev => strip.addEventListener(ev, () => { hold = true; }, { passive: true }));
+  ['pointerleave', 'touchend', 'focusout'].forEach(ev => strip.addEventListener(ev, () => { hold = false; }, { passive: true }));
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    (function drift() {
+      requestAnimationFrame(drift);
+      if (hold || $('start').hidden) return;
+      strip.scrollLeft = strip.scrollLeft + 0.6 >= strip.scrollWidth - strip.clientWidth - 1 ? 0 : strip.scrollLeft + 0.6;
+    })();
+  }
+  // Sections fade in as they scroll into view.
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12 }) : null;
+  document.querySelectorAll('.dash .reveal').forEach(el => (io ? io.observe(el) : el.classList.add('in')));
+}
 
 // ---------- boot ----------
 renderTextUI();
