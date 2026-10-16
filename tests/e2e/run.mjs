@@ -769,10 +769,23 @@ await step('manual text: typed by hand, shown all at once, drag to move, on the 
   assert.ok(y2 > L.y + 0.05, `text moved down: ${L.y} -> ${y2}`);
   await m.click('#undoBtn');
   assert.ok(Math.abs(await m.evaluate(() => window.__vcz.S.o.texts[0].y) - L.y) < 0.001, 'undo moves it back');
-  // Template change keeps the text (it used to wipe sounds and colour too).
-  await m.click('#ltabTpl');
+  // With the text selected, a template goes on the text (captions keep theirs).
+  const capTpl = await m.evaluate(() => window.__vcz.S.tplId);
+  await pickTpl(m, 'Crazy');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'crazy', 'template applied to the selected text');
+  assert.equal(await m.evaluate(() => window.__vcz.S.tplId), capTpl, 'captions keep their template');
+  await m.click('#txtTplClear');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), null, 'template removed from text');
+  // Escape deselects; then a template change styles the captions and keeps the text.
+  await m.keyboard.press('Escape');
+  assert.equal(await m.evaluate(() => window.__vcz.S.textSel), null, 'deselected');
   await pickTpl(m, 'Classic');
+  assert.equal(await m.evaluate(() => window.__vcz.S.tplId), 'classic');
   assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1, 'template change keeps text');
+  // Put the template back on the text: the export must still show it.
+  await m.locator('.ttx').first().click();
+  await pickTpl(m, 'Crazy');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'crazy');
   // Export: red text in the frame at 1 s.
   await m.evaluate(() => { window.__vczExportCodecs = ['vp09.00.40.08']; });
   const dl = m.waitForEvent('download', { timeout: 90000 });

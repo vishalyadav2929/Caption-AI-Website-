@@ -355,6 +355,10 @@
         <p class="hint" id="txtNone">Select a text on the video or timeline to edit it, or add one: <button class="link" id="txtAdd2" type="button">+ Add text</button></p>
         <div class="txt-edit" id="txtEdit" hidden>
           <label class="field" for="txtText"><span class="xlabel">Text</span><textarea id="txtText" rows="3"></textarea></label>
+          <div class="field txt-tpl"><label>Template style</label>
+            <div class="row"><b id="txtTplName">None (plain text)</b><button class="btn btn-sm" id="txtTplPick" type="button">Choose style</button><button class="btn btn-sm" id="txtTplClear" type="button" hidden>Remove</button></div>
+            <small class="tpl-note">With a template, its font, colours, outline and animation are used. Size, place and timing stay yours.</small>
+          </div>
           <div class="field"><label for="txtFont">Font</label><select id="txtFont"></select></div>
           <div class="field"><label for="txtSize">Size <b id="txtSizeVal"></b></label><input type="range" id="txtSize" min="2" max="30" value="7"></div>
           <div class="row field txt-style">

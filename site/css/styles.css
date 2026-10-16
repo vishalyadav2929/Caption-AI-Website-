@@ -811,3 +811,9 @@ body.studio .props .ptab { font-size: 13px; white-space: nowrap; padding: 10px 6
 .chip:hover { border-color: var(--accent); }
 .clip-times label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-transform: none; letter-spacing: 0; font-size: 12.5px; }
 .clip-times .t-in { width: 84px; }
+.txt-tpl .row { gap: 6px; flex-wrap: wrap; }
+.txt-tpl .row b { flex: 1 1 100%; font-size: 14px; }
+.txt-tpl .row .btn { flex: 0 0 auto; }
+.tpl-note { display: none; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+.txt-edit.has-tpl .tpl-note { display: block; }
+.txt-edit.has-tpl :is(.field:has(#txtFont), .txt-style .tgl, .row:has(#txtColor), .row:has(#txtStroke), .row:has(#txtBg)) { opacity: .4; pointer-events: none; }

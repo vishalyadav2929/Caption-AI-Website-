@@ -1,5 +1,5 @@
-import { TEMPLATES, FONTS_URL, loadTemplateFonts } from './templates.js';
-import { buildChunks, findChunk, drawCaption } from './renderer.js';
+import { TEMPLATES, FONTS_URL, loadTemplateFonts, fontString } from './templates.js';
+import { buildChunks, findChunk, drawCaption, spreadWords } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
 import { detectTextLang, onlineTranslate, looksEnglish } from './translate.js';
 import { mountGallery } from './gallery.js';
@@ -10,7 +10,7 @@ import { exportFast } from './export-fast.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
 import { mountTimeline, wavePeaks } from './timeline.js';
 import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
-import { TEXT_FONTS, newLayer, drawLayers, hitLayer } from './text-layers.js';
+import { TEXT_FONTS, newLayer, drawLayer, layersAt, hitLayer } from './text-layers.js';
 import { findClips, cropRect, ASPECTS, aspectSize } from './clips.js';
 import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
@@ -145,8 +145,22 @@ $('lang').onchange = () => {
 // ---------- templates ----------
 const gallery = mountGallery({
   tabsEl: $('tabs'), gridEl: $('grid'), langEl: $('langTabs'), selected: S.tplId,
+  // Tiles show the user's own video frame and words.
+  backdrop: () => thumbBgReady && thumbBg,
+  sampleText: () => {
+    const L = typeof curText === 'function' && curText();
+    const w = L ? L.text : S.segments.length ? C.segmentText(S.segments[0]) : '';
+    return w ? w.split(/\s+/).slice(0, 8).join(' ') : null;
+  },
   onSelect: t => {
     if (S.exporting) return;
+    // A text is selected: the style goes on that text (like picking a text template in any editor).
+    const L = curText();
+    if (L) {
+      patchText({ tpl: t.id });
+      if (document.fonts) document.fonts.load(fontString(t, 40), L.text || 'Aa').catch(() => {});
+      return toast(`“${t.name}” applied to your text. To style the captions instead, click an empty spot on the video first.`, 4500);
+    }
     S.tplId = t.id;
     // Style overrides belong to the old template. Captions are untouched: each template shows long captions
     // in pieces of its own size at render time (e.g. one word at a time for "Pill").
@@ -455,6 +469,10 @@ function renderTextUI() {
   $('txtTime').hidden = !!S.image;
   if (!L) return;
   if (document.activeElement !== $('txtText')) $('txtText').value = L.text;
+  const tp = L.tpl && TEMPLATES.find(x => x.id === L.tpl);
+  $('txtTplName').textContent = tp ? tp.name : 'None (plain text)';
+  $('txtTplClear').hidden = !tp;
+  $('txtEdit').classList.toggle('has-tpl', !!tp);
   $('txtFont').value = L.font;
   $('txtSize').value = Math.round(L.size * 100); $('txtSizeVal').textContent = $('txtSize').value;
   $('txtBold').setAttribute('aria-pressed', !!L.bold); $('txtItalic').setAttribute('aria-pressed', !!L.italic);
@@ -468,6 +486,7 @@ function renderTextUI() {
 function selectText(id, focus) {
   S.textSel = id;
   showRTab('text'); renderTextUI(); timeline.render();
+  const L = curText(); gallery.select(L && L.tpl ? L.tpl : null);
   if (focus) { $('txtText').focus(); $('txtText').select(); }
 }
 function patchText(p, save = true) {
@@ -492,6 +511,8 @@ function addText() {
 }
 $('txtAdd').onclick = () => addText();
 $('txtAdd2').onclick = () => addText();
+$('txtTplPick').onclick = () => { showLTab('tpl'); toast('Pick a style: it goes on the selected text.'); };
+$('txtTplClear').onclick = () => patchText({ tpl: null });
 $('txtText').addEventListener('input', e => patchText({ text: e.target.value }, false));
 $('txtText').addEventListener('change', () => commit());
 $('txtFont').onchange = e => patchText({ font: e.target.value });
@@ -536,6 +557,81 @@ $('txtDel').onclick = () => {
   S.o.texts = texts().filter(l => l.id !== S.textSel); S.textSel = null;
   commit(); renderTextUI(); timeline.render(); toast('Text deleted. Press Ctrl+Z to undo.');
 };
+// A text can wear one of the caption templates: same renderer as captions, so it looks and animates the
+// same, but shown whole (one block) over the text's own time, at its own place and size.
+const tplChunkCache = new Map();
+function tplChunk(L, still) {
+  const key = `${L.text}|${L.start}|${L.end}|${still}`;
+  let c = tplChunkCache.get(L.id);
+  if (!c || c.key !== key) {
+    const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), still ? 0 : L.start, still ? 1 : L.end);
+    c = { key, chunk: buildChunks(words, 999, 9999)[0] || null };
+    tplChunkCache.set(L.id, c);
+  }
+  return c.chunk;
+}
+function drawTplText(c2, W, H, L, t, still) {
+  const tp = TEMPLATES.find(x => x.id === L.tpl);
+  const chunk = String(L.text).trim() && tplChunk(L, still);
+  if (!tp || !chunk) return null;
+  const scale = L.size / (tp.size * 1.6), px = tp.size * Math.min(W, H) * 1.6 * scale;
+  c2.save();
+  c2.translate((L.x - 0.5) * W, 0);
+  drawCaption(c2, W, H, chunk, still ? 1 : t, { ...tp }, { scale, pos: L.y });
+  c2.restore();
+  return { px, ...tplBox(L, tp, W, H, scale) };
+}
+// Where a template actually puts the text: drawn once off-screen (final state) and measured, then cached.
+const boxCache = new Map(), boxCanvas = document.createElement('canvas');
+function tplBox(L, tp, W, H, scale) {
+  const key = `${L.text}|${L.tpl}|${L.size}|${L.x}|${L.y}|${W}|${H}`;
+  const hit = boxCache.get(L.id);
+  if (hit && hit.key === key) return hit.box;
+  const k = Math.min(1, 360 / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+  boxCanvas.width = w; boxCanvas.height = h;
+  const c = boxCanvas.getContext('2d', { willReadFrequently: true });
+  c.clearRect(0, 0, w, h);
+  const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), 0, 1), chunk = buildChunks(words, 999, 9999)[0];
+  c.save(); c.translate((L.x - 0.5) * w, 0);
+  if (chunk) drawCaption(c, w, h, chunk, 1, { ...tp }, { scale, pos: L.y });
+  c.restore();
+  const d = c.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const box = x1 < 0 ? { x0: L.x * W - 20, y0: L.y * H - 20, w: 40, h: 40 } : { x0: x0 / k, y0: y0 / k, w: (x1 - x0 + 1) / k, h: (y1 - y0 + 1) / k };
+  boxCache.set(L.id, { key, box });
+  return box;
+}
+/** Draw every text visible at t (all of them on a photo); returns their boxes for hit-testing. */
+function drawTexts(c2, W, H, t, still = false) {
+  const boxes = [];
+  for (const L of layersAt(texts(), t, still)) {
+    const b = L.tpl ? drawTplText(c2, W, H, L, t, still) : drawLayer(c2, W, H, L);
+    if (b) boxes.push({ id: L.id, ...b });
+  }
+  return boxes;
+}
+function deselectText() {
+  if (!S.textSel) return false;
+  S.textSel = null;
+  renderTextUI(); timeline.render(); gallery.select(S.tplId);
+  return true;
+}
+// Template thumbnails use a frame of the user's own video (or photo).
+var thumbBg = document.createElement('canvas'), thumbBgReady = false;
+thumbBg.width = 400; thumbBg.height = 300;
+function updateThumbBg() {
+  const src = S.image || (video.readyState >= 2 && video.videoWidth ? video : null);
+  if (!src) { thumbBgReady = false; return; }
+  const w = src.naturalWidth || src.videoWidth, h = src.naturalHeight || src.videoHeight, k = Math.max(400 / w, 300 / h);
+  const x = thumbBg.getContext('2d');
+  x.drawImage(src, (400 - w * k) / 2, (300 - h * k) / 2, w * k, h * k);
+  x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(0, 0, 400, 300);
+  thumbBgReady = true;
+}
+video.addEventListener('seeked', updateThumbBg);
+video.addEventListener('loadeddata', () => setTimeout(updateThumbBg, 150));
+
 /** Dashed box around the selected text in the preview (never in the export). */
 function drawTextSelection() {
   const b = S.textBoxes.find(x => x.id === S.textSel);
@@ -743,7 +839,7 @@ async function loadImage(file) {
   $('time').textContent = 'Photo';
   renderSegs(); syncActions(); refreshLookThumbs();
   if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); showRTab('text'); }
-  renderMedia();
+  renderMedia(); updateThumbBg();
   if (!opening) createProject(file, 'photo');
   status('Photo loaded. Type your text on the left, drag it on the photo, then press Export.');
   return true;
@@ -845,7 +941,7 @@ $('seek').oninput = e => {
       const L = texts().find(l => l.id === id);
       drag = { text: L, x0: e.clientX, y0: e.clientY, lx: L.x, ly: L.y, moved: false, w: r.width, h: r.height };
       if (S.textSel !== id) selectText(id);
-    } else drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false };
+    } else drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false, wasSel: !!S.textSel };
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('dblclick', () => { if (curText()) { $('txtText').focus(); $('txtText').select(); } });
@@ -870,7 +966,8 @@ $('seek').oninput = e => {
   const end = () => {
     if (!drag) return;
     canvas.classList.remove('dragging');
-    if (drag.moved) commit(); else if (!drag.text) togglePlay();
+    if (drag.moved) commit();
+    else if (!drag.text) { if (drag.wasSel) deselectText(); else togglePlay(); }
     drag = null;
   };
   canvas.addEventListener('pointerup', end);
@@ -1484,7 +1581,7 @@ async function exportPhoto() {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
   x.drawImage(graded(img, w, h), 0, 0, w, h);
-  drawLayers(x, w, h, texts(), 0, true);
+  drawTexts(x, w, h, 0, true);
   const png = /png/i.test(S.file.type);
   const blob = await new Promise(r => c.toBlob(r, png ? 'image/png' : 'image/jpeg', 0.95));
   if (!blob) return toast('Couldn’t save the photo in this browser.');
@@ -1531,7 +1628,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
     else if (video.readyState >= 2 && video.videoWidth) drawVideo(xctx, size.w, size.h);
     else { xctx.fillStyle = '#0d0d16'; xctx.fillRect(0, 0, size.w, size.h); }
     drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, overlay ? { ...opts, fill: null } : opts);
-    drawLayers(xctx, size.w, size.h, texts(), t);
+    drawTexts(xctx, size.w, size.h, t);
   };
   let stopClock = null;
   try {
@@ -1548,7 +1645,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
         draw: (src, t, w, h) => {
           drawVideo(xctx, size.w, size.h, src, w, h);
           drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, opts);
-          drawLayers(xctx, size.w, size.h, texts(), t);
+          drawTexts(xctx, size.w, size.h, t);
         },
         onProgress: (p, t) => {
           $('exportBar').style.width = `${(p * 100).toFixed(1)}%`;
@@ -1807,7 +1904,7 @@ function drawFrame() {
     const img = S.image;
     if (Math.abs(W / H - img.naturalWidth / img.naturalHeight) > 0.01) fitCanvas(img.naturalWidth, img.naturalHeight);
     ctx.drawImage(graded(img, canvas.width, canvas.height), 0, 0, canvas.width, canvas.height);
-    S.textBoxes = drawLayers(ctx, canvas.width, canvas.height, texts(), 0, true);
+    S.textBoxes = drawTexts(ctx, canvas.width, canvas.height, 0, true);
     drawTextSelection();
     return 0;
   }
@@ -1818,7 +1915,7 @@ function drawFrame() {
     if (vw && Math.abs(W / H - r.sw / r.sh) > 0.01) fitCanvas(r.sw, r.sh);
     if (video.readyState >= 2 && vw) drawVideo(ctx, canvas.width, canvas.height); else drawPlaceholder();
     const t = video.currentTime;
-    if (!S.segments.length && S.file) {
+    if (!S.segments.length && S.file && !texts().length) {
       const st = (performance.now() / 1000) % 4.2;
       drawCaption(ctx, canvas.width, canvas.height, findChunk(sampleChunks(), st), st, t0, opts);
       const fs = Math.max(11, canvas.width * 0.028);
@@ -1830,7 +1927,7 @@ function drawFrame() {
     } else {
       drawCaption(ctx, canvas.width, canvas.height, findChunk(fileChunks(), t), t, t0, opts);
     }
-    S.textBoxes = drawLayers(ctx, canvas.width, canvas.height, texts(), t);
+    S.textBoxes = drawTexts(ctx, canvas.width, canvas.height, t);
     drawTextSelection();
     return t;
   }
@@ -1871,6 +1968,7 @@ document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); }
+  else if (e.key === 'Escape' && !typing && S.textSel) deselectText();
   else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.textSel && !$('timeline').contains(document.activeElement)) { e.preventDefault(); $('txtDel').click(); }
   else if (e.key === ' ' && !typing && document.activeElement.tagName !== 'BUTTON' && !$('editor').hidden) { e.preventDefault(); togglePlay(); }
 });
