@@ -37,9 +37,9 @@
           <button class="btn btn-sm" id="layBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Arrange the editor">▦ Layout</button>
           <div class="lay-menu" id="layMenu" hidden>
             <b>Preview position</b>
+            <button type="button" data-lay="right">Preview on the right, full height</button>
             <button type="button" data-lay="center">Preview in the middle</button>
-            <button type="button" data-lay="left">Preview on the left</button>
-            <button type="button" data-lay="right">Preview on the right</button>
+            <button type="button" data-lay="left">Preview on the left, full height</button>
             <hr><button type="button" id="layReset">Reset sizes</button>
             <small>Drag the bars between panels to resize. Your layout is saved on this device.</small>
           </div>
@@ -178,8 +178,11 @@
         <button class="tool-tab on" id="ltabMedia" role="tab" aria-selected="true" aria-controls="paneMedia"><i aria-hidden="true">▣</i><span>Media</span></button><button class="tool-tab" id="ltabClips" role="tab" aria-selected="false" aria-controls="paneClips"><i aria-hidden="true">✂</i><span>Clips</span></button><button class="tool-tab" id="tabCaptions" role="tab" aria-selected="false" aria-controls="paneCaptions"><i aria-hidden="true">💬</i><span>Captions</span></button><button class="tool-tab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText"><i aria-hidden="true">T</i><span>Text</span></button><button class="tool-tab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd"><i aria-hidden="true">♪</i><span>Audio</span></button><button class="tool-tab" id="ltabTpl" role="tab" aria-selected="false" aria-controls="paneTpl"><i aria-hidden="true">✦</i><span>Styles</span></button><button class="tool-tab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor"><i aria-hidden="true">◐</i><span>Filters</span></button><button class="tool-tab" id="ltabAdj" role="tab" aria-selected="false" aria-controls="paneAdjust"><i aria-hidden="true">☰</i><span>Adjust</span></button>
       </div>
       <div class="panel-b" id="paneMedia" role="tabpanel">
-        <label class="media-import" for="fileIn"><span aria-hidden="true">+</span><strong>Import</strong><small>Video, audio or photo · stays on your device</small></label>
+        <label class="media-import" for="fileIn" id="mediaDrop"><span aria-hidden="true">+</span><strong>Import</strong><small>Drop videos, audio or photos (several at once) · they stay on your device</small></label>
         <div class="media-card" id="mediaCard" hidden><canvas id="mediaThumb" width="160" height="90"></canvas><div><b id="mediaName"></b><small id="mediaInfo"></small></div></div>
+        <h3 class="more-h">Your media <small id="binCount"></small></h3>
+        <p class="hint bin-hint">Click a file to open it in the preview. Each one keeps its own captions, text and edits.</p>
+        <div class="media-bin" id="mediaBin"></div>
           <h3 class="more-h">Subtitles &amp; more</h3>
           <div class="row field file-row">
             <label class="btn btn-sm" for="fileIn">Use another video</label>
@@ -296,7 +299,7 @@
       <div class="canvas-box" id="box">
         <canvas id="stage" width="1080" height="1920" aria-label="Video preview with captions"></canvas>
         <label class="drop" id="drop">
-          <input type="file" id="fileIn" accept="video/*,audio/*,image/*,.mov,.mkv,.m4a,.mp3" hidden>
+          <input type="file" id="fileIn" accept="video/*,audio/*,image/*,.mov,.mkv,.m4a,.mp3" multiple hidden>
           <div>
             <div class="drop-ic" aria-hidden="true">⬆</div>
             <strong>Drop a video or photo here</strong>

@@ -300,7 +300,10 @@ await step('replacing the video asks first when there are captions; landscape si
   await page.waitForTimeout(300);
   const dims = await vcz(() => [document.getElementById('stage').width, document.getElementById('stage').height]);
   assert.deepEqual(dims, [960, 540]);
-  if (hadCaptions) assert.match(asked, /captions will be removed/);
+  // Nothing is lost any more: the previous video stays in Media as its own project, so no question is asked.
+  assert.equal(asked, '', 'no confirm needed');
+  await page.waitForFunction(() => document.querySelectorAll('#mediaBin .media-item').length >= 2);
+  if (hadCaptions) assert.ok(await page.locator('#mediaBin .media-item').count() >= 2, 'the previous video is still in Media');
 });
 
 await step('no horizontal overflow on phones, tablets and laptops (incl. editor with a video loaded)', async () => {
@@ -368,6 +371,8 @@ await step('drag the captions up/down on the video; A−/A+ change size', async 
   const after = await m.evaluate(() => window.__vcz.S.o.pos);
   assert.ok(after < before - 0.15, `position moved up: ${before} → ${after}`);
   assert.equal(await m.evaluate(() => document.querySelector('video').paused), true, 'dragging must not start playback');
+  // A−/A+ sit on the preview in the middle layout (the full-height layouts show only the video).
+  await m.click('#layBtn'); await m.click('[data-lay="center"]');
   await m.click('#szUp'); await m.click('#szUp');
   assert.equal(await m.evaluate(() => window.__vcz.S.o.scale), 1.2);
   await m.click('#szDown');
@@ -861,8 +866,13 @@ await step('layout: preview left/middle/right and panel sizes are saved across r
   await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
   await m.waitForSelector('#timeline:not([hidden])');
   const x = async sel => (await m.locator(sel).boundingBox()).x;
-  assert.ok(await x('.panel.tools') < await x('.stage') && await x('.stage') < await x('.panel.props'), 'CapCut order by default');
-  const tl = await m.locator('#timeline').boundingBox(), st = await m.locator('.stage').boundingBox();
+  // Default: tools | details | preview on the right, full height; timeline under the two panels.
+  assert.ok(await x('.panel.tools') < await x('.panel.props') && await x('.panel.props') < await x('.stage'), 'preview on the right by default');
+  let tl = await m.locator('#timeline').boundingBox(), st = await m.locator('.stage').boundingBox();
+  assert.ok(st.y + st.height >= tl.y + tl.height - 2 && tl.x + tl.width <= st.x + 1, 'preview runs full height beside the timeline');
+  // Middle layout: timeline across the whole width under the preview.
+  await m.click('#layBtn'); await m.click('[data-lay="center"]');
+  tl = await m.locator('#timeline').boundingBox(); st = await m.locator('.stage').boundingBox();
   assert.ok(tl.y >= st.y + st.height - 1 && tl.width > 1200, 'timeline runs full width under the preview');
   await m.click('#layBtn'); await m.click('[data-lay="left"]');
   assert.ok(await x('.stage') < await x('.panel.tools'), 'preview moved to the left');
@@ -876,7 +886,7 @@ await step('layout: preview left/middle/right and panel sizes are saved across r
   await m.click('#startSkip');
   assert.equal(await m.getAttribute('#editor', 'data-lay'), 'left', 'layout remembered');
   assert.match(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), /^\d+px$/);
-  assert.notEqual(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), '210px', 'timeline size remembered');
+  assert.notEqual(await m.evaluate(() => document.getElementById('editor').style.getPropertyValue('--th')), '200px', 'timeline size remembered');
   await ctx.close();
 });
 
@@ -1102,6 +1112,31 @@ await step('pick a style first, then type: photo text and video text take the ch
   await pickTpl(m, 'Beast Bold');
   assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 1);
   assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'beast-bold', 'from the Text tool: style is for text');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('media library: import several files at once, click one to open it, each keeps its own edits', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', [join(FIX, 'portrait.webm'), join(FIX, 'landscape.webm'), join(FIX, 'photo.jpg')]);
+  await m.waitForFunction(() => document.querySelectorAll('#mediaBin .media-item').length === 3, null, { timeout: 20000 });
+  assert.match(await m.evaluate(() => window.__vcz.S.file.name), /portrait/);
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.waitForTimeout(1500);
+  // Open the landscape one: the preview switches, and it has no captions of its own.
+  await m.click('#ltabMedia');
+  await m.locator('#mediaBin .media-item', { hasText: 'landscape' }).click();
+  await m.waitForFunction(() => window.__vcz.S.file && /landscape/.test(window.__vcz.S.file.name));
+  assert.equal(await m.evaluate(() => window.__vcz.S.segments.length), 0);
+  assert.deepEqual(await m.evaluate(() => [document.getElementById('stage').width, document.getElementById('stage').height]), [960, 540]);
+  // Back to the portrait one: its captions are still there.
+  await m.click('#ltabMedia');
+  await m.locator('#mediaBin .media-item', { hasText: 'portrait' }).click();
+  await m.waitForFunction(() => window.__vcz.S.file && /portrait/.test(window.__vcz.S.file.name) && window.__vcz.S.segments.length > 0, null, { timeout: 10000 });
   assert.deepEqual(errs, []);
   await ctx.close();
 });

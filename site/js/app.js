@@ -204,12 +204,13 @@ const gallery = mountGallery({
 
 // ---------- editor layout (computers): preview left / middle / right, panel sizes, saved ----------
 {
-  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 300, th: 180, v: 2 };
+  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'right', lw: 300, rw: 320, th: 200, v: 3 };
   const L = { ...DEF };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY)) || {};
     // Layouts saved before the bigger-preview defaults keep only where the preview sits.
-    Object.assign(L, saved.v === 2 ? saved : { lay: saved.lay || DEF.lay, big: saved.big });
+    // Layouts saved before the full-height preview became the default start again from the defaults.
+    Object.assign(L, saved.v === 3 ? saved : { big: saved.big });
   } catch { /* private mode */ }
   const apply = () => {
     app.dataset.lay = L.lay;
@@ -1010,15 +1011,11 @@ function fitCanvas(w, h) {
   canvas.width = Math.round(w * k / 2) * 2;
   canvas.height = Math.round(h * k / 2) * 2;
 }
-$('fileIn').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = '';
-  if (f && S.segments.length && !confirm('Use a different video? Your current captions will be removed.')) return;
-  if (await loadFile(f)) autoCaption();
-};
+$('fileIn').onchange = e => { const files = [...e.target.files]; e.target.value = ''; importFiles(files); };
 const box = $('box');
 ['dragenter', 'dragover'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => box.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
-box.addEventListener('drop', async e => { if (S.mode === 'file' && !S.exporting && await loadFile(e.dataTransfer.files[0])) autoCaption(); });
+box.addEventListener('drop', e => { if (S.mode === 'file' && !S.exporting) importFiles([...e.dataTransfer.files]); });
 
 // ---------- playback ----------
 function togglePlay() { if (!video.src || S.exporting || S.mode !== 'file') return; video.paused ? video.play() : video.pause(); }
@@ -2232,6 +2229,78 @@ $('clipStart').onchange = clipTime('start');
 $('clipEnd').onchange = clipTime('end');
 ['cardClips', 'toolClips', 'navClips'].forEach(id => $(id).addEventListener('click', () => { S.wantClips = true; }));
 
+// ---------- media library: several files, each its own saved project ----------
+/** Import files: the first opens in the editor, the rest wait in the media library. */
+async function importFiles(files) {
+  files = files.filter(Boolean);
+  if (!files.length || S.exporting) return;
+  if (genRunning) return toast('Captions are being made. Import more files when they are done.');
+  const [first, ...rest] = files;
+  if (S.projectId) await saveNow(); // the current file keeps its edits in its own project
+  if (await loadFile(first)) autoCaption();
+  for (const f of rest) await addToBin(f);
+  if (rest.length) { showLTab('media'); toast(`${files.length} files imported. Click one in Media to open it.`); }
+  renderBin();
+}
+async function addToBin(file) {
+  const bad = isImage(file) ? null : validateFile(file);
+  if (bad) { toast(bad, 5000); return; }
+  const id = newId(), now = Date.now();
+  await putProject({ id, name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name, type: file.type, size: file.size, kind: isImage(file) ? 'photo' : 'video', created: now, updated: now, dur: 0, thumb: null, state: null, hasFile: false });
+  if (await putProjectFile(id, file)) await patchProject(id, { hasFile: true });
+  thumbOf(file).then(t => t && patchProject(id, t)).then(renderBin);
+}
+/** A small picture (and duration) of a file, without opening it in the editor. */
+function thumbOf(file) {
+  return new Promise(res => {
+    const url = URL.createObjectURL(file), done = v => { URL.revokeObjectURL(url); res(v); };
+    const shot = (src, w, h, dur) => {
+      try {
+        const k = 240 / Math.max(w, h), c = document.createElement('canvas');
+        c.width = Math.round(w * k); c.height = Math.round(h * k);
+        c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+        done({ thumb: c.toDataURL('image/jpeg', 0.7), dur: dur || 0 });
+      } catch { done(null); }
+    };
+    if (isImage(file)) { const im = new Image(); im.onload = () => shot(im, im.naturalWidth, im.naturalHeight, 0); im.onerror = () => done(null); im.src = url; return; }
+    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.onloadeddata = () => { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); };
+    v.onseeked = () => shot(v, v.videoWidth, v.videoHeight, v.duration);
+    v.onerror = () => done(null);
+    setTimeout(() => done(null), 15000);
+    v.src = url;
+  });
+}
+async function renderBin() {
+  const list = await listProjects(), bin = $('mediaBin');
+  bin.innerHTML = '';
+  $('binCount').textContent = list.length ? `· ${list.length}` : '';
+  for (const p of list) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'media-item' + (p.id === S.projectId ? ' on' : '');
+    b.title = p.id === S.projectId ? `${p.name} (open)` : `Open ${p.name}`;
+    const th = document.createElement('div'); th.className = 'media-th';
+    if (p.thumb) { const im = document.createElement('img'); im.src = p.thumb; im.alt = ''; th.appendChild(im); }
+    const badge = document.createElement('span'); badge.textContent = p.kind === 'photo' ? 'Photo' : p.dur ? fmt(p.dur) : 'Video'; th.appendChild(badge);
+    const nm = document.createElement('b'); nm.textContent = p.name;
+    b.append(th, nm);
+    b.onclick = async () => {
+      if (p.id === S.projectId || S.exporting) return;
+      if (genRunning) return toast('Captions are being made. Open another file when they are done.');
+      await saveNow();
+      await openProject(p.id);
+      renderBin();
+    };
+    bin.appendChild(b);
+  }
+}
+{
+  const md = $('mediaDrop');
+  ['dragenter', 'dragover'].forEach(ev => md.addEventListener(ev, e => { e.preventDefault(); md.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => md.addEventListener(ev, e => { e.preventDefault(); md.classList.remove('over'); }));
+  md.addEventListener('drop', e => importFiles([...e.dataTransfer.files]));
+}
+
 // ---------- projects (saved on this device) ----------
 S.projectId = null;
 var opening = false; // true while a saved project is being reopened: don't create a new one
@@ -2242,6 +2311,7 @@ async function createProject(file, kind) {
   if (stored) await patchProject(id, { hasFile: true });
   else toast('Project saved, but this device has no room to keep the video itself. Keep the original file to reopen it.', 6500);
   scheduleSave();
+  setTimeout(() => saveNow().then(renderBin), 1200);
 }
 let saveTimer = null;
 function scheduleSave() {
@@ -2277,6 +2347,7 @@ async function openProject(id) {
     openEditor();
     showLTab(S.image ? 'text' : 'captions');
     status(`Opened “${p.name}”.`);
+    renderBin();
   } finally { opening = false; }
 }
 async function renderProjects() {
@@ -2348,7 +2419,7 @@ function openEditor() {
   $('start').hidden = true; $('newProj').hidden = true;
   $('editor').hidden = false;
   $('navActions').hidden = false;
-  timeline.render();
+  timeline.render(); renderBin();
 }
 
 // A small accessible searchable dropdown.
