@@ -69,7 +69,7 @@ export function mountTimeline(root, api) {
     if (act === 'split') api.splitAt(api.time());
     if (act === 'del') {
       if (sfxSel != null) { const i = sfxSel; sfxSel = null; api.deleteSound(i); }
-      else if (sel) { const [si, wi] = sel; sel = null; api.deleteWord(si, wi); }
+      else if (sel) { const [si, wi] = sel; sel = null; api.selectWord && api.selectWord(null); api.deleteWord(si, wi); }
       else api.deleteSelected();
     }
   };
@@ -134,7 +134,8 @@ export function mountTimeline(root, api) {
         b.style.left = `${w.start * pps}px`; b.style.width = `${Math.max(8, (w.end - w.start) * pps - 2)}px`;
         b.textContent = api.show(w.text);
         b.title = `${b.textContent} · ${w.start.toFixed(2)}s`;
-        b.onclick = () => { sel = [si, wi]; wordsRow.querySelectorAll('.tw.sel').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); api.seek(w.start); scroll.focus({ preventScroll: true }); };
+        b.onclick = () => { sel = [si, wi]; wordsRow.querySelectorAll('.tw.sel').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); api.seek(w.start); api.selectWord && api.selectWord(si, wi); scroll.focus({ preventScroll: true }); };
+        if (w.color) b.style.boxShadow = `inset 0 -3px 0 ${w.color}`;
         b.ondblclick = () => {
           b.contentEditable = 'true'; b.textContent = w.text; b.classList.add('editing');
           const range = document.createRange(); range.selectNodeContents(b);

@@ -70,6 +70,9 @@ export function drawLayer(ctx, W, H, L) {
   }
   ctx.textAlign = L.align === 'left' ? 'left' : L.align === 'right' ? 'right' : 'center';
   const x = L.align === 'left' ? b.x0 : L.align === 'right' ? b.x0 + b.w : b.cx;
+  const wc = L.wordColors || {};
+  const coloured = Object.keys(wc).length > 0;
+  let wi = 0; // word index across lines
   b.lines.forEach((s, i) => {
     const y = b.y0 + b.lineH * (i + 0.5);
     if (L.strokeW > 0) {
@@ -78,8 +81,16 @@ export function drawLayer(ctx, W, H, L) {
       ctx.strokeText(s, x, y);
     }
     if (L.shadow) { ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = b.px * 0.18; ctx.shadowOffsetY = b.px * 0.05; }
-    ctx.fillStyle = L.color;
-    ctx.fillText(s, x, y);
+    const words = s.split(' ').filter(Boolean);
+    if (!coloured || !words.length) { ctx.fillStyle = L.color; ctx.fillText(s, x, y); wi += words.length; }
+    else {
+      // Word by word, so each can have its own colour; same positions as the whole line.
+      const lw = ctx.measureText(s).width, sp = ctx.measureText(' ').width;
+      let cx = ctx.textAlign === 'left' ? x : ctx.textAlign === 'right' ? x - lw : x - lw / 2;
+      const al = ctx.textAlign; ctx.textAlign = 'left';
+      for (const w of words) { ctx.fillStyle = wc[wi] || L.color; ctx.fillText(w, cx, y); cx += ctx.measureText(w).width + sp; wi++; }
+      ctx.textAlign = al;
+    }
     ctx.shadowColor = 'transparent';
   });
   ctx.restore();

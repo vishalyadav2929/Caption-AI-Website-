@@ -559,11 +559,11 @@ body.no-scroll .nav { visibility: hidden; }
 /* ---------- CapCut-style editor on computers: tools | preview | properties, timeline across the bottom ---------- */
 .split, .tl-dock { display: none; }
 @media (min-width: 1101px) {
-  .app { gap: 0; padding: 12px; grid-template-columns: var(--lw, 320px) 10px minmax(320px, 1fr) 10px var(--rw, 340px);
-    grid-template-rows: minmax(0, 1fr) 10px var(--th, 230px);
+  .app { gap: 0; padding: 12px; grid-template-columns: var(--lw, 300px) 10px minmax(320px, 1fr) 10px var(--rw, 300px);
+    grid-template-rows: minmax(0, 1fr) 10px var(--th, 210px);
     grid-template-areas: "tools sl stage sr props" "st st st st st" "tl tl tl tl tl"; }
-  .app[data-lay="left"] { grid-template-columns: minmax(320px, 1fr) 10px var(--lw, 320px) 10px var(--rw, 340px); grid-template-areas: "stage sl tools sr props" "st st st st st" "tl tl tl tl tl"; }
-  .app[data-lay="right"] { grid-template-columns: var(--lw, 320px) 10px var(--rw, 340px) 10px minmax(320px, 1fr); grid-template-areas: "tools sl props sr stage" "st st st st st" "tl tl tl tl tl"; }
+  .app[data-lay="left"] { grid-template-columns: minmax(320px, 1fr) 10px var(--lw, 300px) 10px var(--rw, 300px); grid-template-areas: "stage sl tools sr props" "st st st st st" "tl tl tl tl tl"; }
+  .app[data-lay="right"] { grid-template-columns: var(--lw, 300px) 10px var(--rw, 300px) 10px minmax(320px, 1fr); grid-template-areas: "tools sl props sr stage" "st st st st st" "tl tl tl tl tl"; }
   .app > .panel.tools { grid-area: tools; } .app > .panel.props { grid-area: props; } .app > .stage { grid-area: stage; }
   #splitL { grid-area: sl; } #splitR { grid-area: sr; } #splitT { grid-area: st; }
   .split { display: block; position: relative; cursor: col-resize; touch-action: none; outline: none; }
@@ -811,3 +811,32 @@ body.studio .props .ptab { font-size: 13px; white-space: nowrap; padding: 10px 6
 .chip:hover { border-color: var(--accent); }
 .clip-times label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-transform: none; letter-spacing: 0; font-size: 12.5px; }
 .clip-times .t-in { width: 84px; }
+.txt-tpl .row { gap: 6px; flex-wrap: wrap; }
+.txt-tpl .row b { flex: 1 1 100%; font-size: 14px; }
+.txt-tpl .row .btn { flex: 0 0 auto; }
+.tpl-note { display: none; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+.txt-edit.has-tpl .tpl-note { display: block; }
+.txt-edit.has-tpl :is(.field:has(#txtFont), .txt-style .tgl, .row:has(#txtColor), .row:has(#txtStroke), .row:has(#txtBg)) { opacity: .4; pointer-events: none; }
+
+/* ----- word colours, one line, big preview ----- */
+.word-group .row { align-items: center; }
+.word-name { font-size: 16px; }
+.word-tip { margin: 8px 0 0; }
+.txt-words label small { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--muted); }
+.txt-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.txt-chips .chip.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(139,92,246,.3); }
+#bigBtn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+@media (min-width: 1101px) {
+  .app.big { grid-template-columns: 0 0 minmax(0, 1fr) 0 0 !important; }
+  .app.big > .panel.tools, .app.big > .panel.props, .app.big > #splitL, .app.big > #splitR { display: none; }
+}
+.pv-grip { display: none; }
+@media (max-width: 1100px) {
+  .pv-grip { display: block; height: 14px; margin: -4px auto -2px; width: 72px; cursor: row-resize; touch-action: none; position: relative; }
+  .pv-grip::after { content: ""; position: absolute; left: 0; right: 0; top: 5px; height: 4px; border-radius: 4px; background: #4b4b63; }
+  .stage[style*="--pv-h"] .canvas-box { height: var(--pv-h) !important; }
+}
+@media (min-width: 1101px) {
+  .app.big { grid-template-rows: minmax(0, 1fr) 10px min(var(--th, 210px), 170px); }
+  .app.big .mode-switch, .app.big .drag-hint, .app.big .meta { display: none; }
+}

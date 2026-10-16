@@ -5,10 +5,10 @@ const LOOP = 4.2;
 const FRAME_MS = 1000 / 30 - 2;
 const TW = 400, TH = 300;
 
-function sampleChunks(tpl, lang = 'en') {
-  // Devanagari-first styles preview in Hindi unless another script is picked.
+function sampleChunks(tpl, lang = 'en', own = null) {
+  // The editor passes the user's own words; otherwise Devanagari-first styles preview in Hindi.
   const id = lang === 'en' && tpl.tags.includes('hindi') ? 'hi' : lang;
-  const words = spreadWords(SAMPLES.find(l => l.id === id).text, 0.1, LOOP - 0.3);
+  const words = spreadWords(own || SAMPLES.find(l => l.id === id).text, 0.1, LOOP - 0.3);
   return buildChunks(words, tpl.words, 40);
 }
 
@@ -44,9 +44,12 @@ function paintFill(t) {
 
 /**
  * Mounts a filterable template grid.
- * opts: { tabsEl, gridEl, langEl?, countEl?, selected, onSelect }
+ * opts: { tabsEl, gridEl, langEl?, countEl?, selected, onSelect,
+ *         backdrop?() → CanvasImageSource|null (e.g. a frame of the user's video),
+ *         sampleText?() → string|null (e.g. the user's own caption or text) }
  */
-export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSelect }) {
+export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSelect, backdrop, sampleText }) {
+  let lang = 'en', ownKey = null;
   let filter = 'all';
   let current = selected;
   const tiles = [];
@@ -77,6 +80,7 @@ export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSele
       if (l.en) { const sm = document.createElement('small'); sm.textContent = l.en; b.appendChild(sm); }
       b.onclick = () => {
         langEl.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+        lang = l.id; ownKey = null;
         tiles.forEach(tile => { tile.chunks = sampleChunks(tile.tpl, l.id); });
       };
       langEl.appendChild(b);
@@ -121,13 +125,19 @@ export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSele
     lastDraw = now;
     const sec = (now - t0) / 1000;
     const t = sec % LOOP;
+    if (!tiles.some(x => x.visible)) return;
     if (tiles.some(x => x.visible && x.tpl.fx === 'videoFill')) paintFill(sec);
+    // Preview every style on the user's own words when the editor gives them.
+    const own = sampleText && sampleText();
+    if ((own || null) !== ownKey) { ownKey = own || null; tiles.forEach(tile => { tile.chunks = sampleChunks(tile.tpl, lang, ownKey); }); }
+    const bg = backdrop && backdrop();
     for (const tile of tiles) {
       if (!tile.visible || tile.el.style.display === 'none') continue;
       const { ctx } = tile;
-      if (tile.scene) paintScene(ctx, TW, TH, sec);
+      if (bg) { ctx.drawImage(bg, 0, 0, TW, TH); }
+      else if (tile.scene) paintScene(ctx, TW, TH, sec);
       else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, TW, TH); }
-      drawCaption(ctx, TW, TH, findChunk(tile.chunks, t), t, { ...tile.tpl, pos: tile.tpl.pos === 0.18 ? 0.25 : 0.5 }, { fill: fillCanvas });
+      drawCaption(ctx, TW, TH, findChunk(tile.chunks, t), t, { ...tile.tpl, pos: tile.tpl.pos === 0.18 ? 0.25 : 0.5 }, { fill: fillCanvas, scale: bg ? 1.25 : 1 });
     }
   })(t0);
 

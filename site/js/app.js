@@ -1,5 +1,5 @@
-import { TEMPLATES, FONTS_URL, loadTemplateFonts } from './templates.js';
-import { buildChunks, findChunk, drawCaption } from './renderer.js';
+import { TEMPLATES, FONTS_URL, loadTemplateFonts, fontString } from './templates.js';
+import { buildChunks, findChunk, drawCaption, spreadWords } from './renderer.js';
 import { LANGUAGES, toHinglish } from './languages.js';
 import { detectTextLang, onlineTranslate, looksEnglish } from './translate.js';
 import { mountGallery } from './gallery.js';
@@ -10,7 +10,7 @@ import { exportFast } from './export-fast.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
 import { mountTimeline, wavePeaks } from './timeline.js';
 import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
-import { TEXT_FONTS, newLayer, drawLayers, hitLayer } from './text-layers.js';
+import { TEXT_FONTS, newLayer, drawLayer, layersAt, hitLayer } from './text-layers.js';
 import { findClips, cropRect, ASPECTS, aspectSize } from './clips.js';
 import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
@@ -93,6 +93,7 @@ function tpl() {
   if (o.shadow != null) r.shadow = o.shadow ? { c: 'rgba(0,0,0,.7)', b: 0.18, x: 0, y: 0.05 } : null;
   if (o.bgOp != null) r.bg = o.bgOp > 0 ? { c: hexA(o.bgColor || '#000000', o.bgOp / 100), pad: 0.3, r: 0.18 } : null;
   if (o.align) r.align = o.align;
+  if (o.oneLine) r.oneLine = true;
   if (o.maxWidth) r.maxWidth = o.maxWidth;
   if (o.lineGap) r.lineGap = o.lineGap;
   return r;
@@ -119,7 +120,7 @@ function restore(s) {
   S.segments = d.segments; S.o = d.o; S.tplId = d.tplId; S.hinglish = d.hinglish;
   gallery.select(S.tplId);
   if (S.textSel && !texts().some(l => l.id === S.textSel)) S.textSel = null;
-  syncControls(); renderSegs(); syncActions(); renderTextUI(); renderClipUI();
+  syncControls(); renderSegs(); syncActions(); renderTextUI(); renderClipUI(); renderWordUI();
 }
 function undo() { if (hIdx > 0 && !S.exporting) { hIdx--; restore(hist[hIdx]); syncUndo(); } }
 function redo() { if (hIdx < hist.length - 1 && !S.exporting) { hIdx++; restore(hist[hIdx]); syncUndo(); } }
@@ -145,8 +146,22 @@ $('lang').onchange = () => {
 // ---------- templates ----------
 const gallery = mountGallery({
   tabsEl: $('tabs'), gridEl: $('grid'), langEl: $('langTabs'), selected: S.tplId,
+  // Tiles show the user's own video frame and words.
+  backdrop: () => thumbBgReady && thumbBg,
+  sampleText: () => {
+    const L = typeof curText === 'function' && curText();
+    const w = L ? L.text : S.segments.length ? C.segmentText(S.segments[0]) : '';
+    return w ? w.split(/\s+/).slice(0, 8).join(' ') : null;
+  },
   onSelect: t => {
     if (S.exporting) return;
+    // A text is selected: the style goes on that text (like picking a text template in any editor).
+    const L = curText();
+    if (L) {
+      patchText({ tpl: t.id });
+      if (document.fonts) document.fonts.load(fontString(t, 40), L.text || 'Aa').catch(() => {});
+      return toast(`“${t.name}” applied to your text. To style the captions instead, click an empty spot on the video first.`, 4500);
+    }
     S.tplId = t.id;
     // Style overrides belong to the old template. Captions are untouched: each template shows long captions
     // in pieces of its own size at render time (e.g. one word at a time for "Pill").
@@ -172,7 +187,7 @@ const gallery = mountGallery({
 
 // ---------- editor layout (computers): preview left / middle / right, panel sizes, saved ----------
 {
-  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 320, rw: 340, th: 230 };
+  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 300, th: 210 };
   const L = { ...DEF };
   try { Object.assign(L, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* private mode */ }
   const apply = () => {
@@ -213,7 +228,29 @@ const gallery = mountGallery({
     apply(); save(); open(false); timeline.render();
   };
   document.addEventListener('click', () => open(false));
+  // Big preview: hide the side panels (computers). Remembered with the layout.
+  const big = on => {
+    L.big = on; app.classList.toggle('big', on);
+    $('bigBtn').setAttribute('aria-pressed', on); $('bigBtn').classList.toggle('on', on);
+    save(); setTimeout(() => timeline.render(), 50);
+  };
+  $('bigBtn').onclick = () => big(!L.big);
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
+    if (!typing && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'b' && !$('editor').hidden) big(!L.big);
+  });
+  // Phones/tablets: drag the bar under the preview to make it bigger or smaller.
+  const stage = $('main'), grip = $('pvGrip');
+  const setPv = vh => { L.pvh = Math.round(Math.min(62, Math.max(24, vh))); stage.style.setProperty('--pv-h', `${L.pvh}vh`); };
+  if (L.pvh) setPv(L.pvh);
+  grip.onpointerdown = e => {
+    e.preventDefault(); grip.setPointerCapture(e.pointerId);
+    const y0 = e.clientY, h0 = $('box').getBoundingClientRect().height / innerHeight * 100;
+    grip.onpointermove = ev => setPv(h0 + (ev.clientY - y0) / innerHeight * 100);
+    grip.onpointerup = grip.onpointercancel = () => { grip.onpointermove = grip.onpointerup = grip.onpointercancel = null; save(); };
+  };
   apply();
+  if (L.big) big(true);
 }
 
 // ---------- style controls ----------
@@ -235,6 +272,8 @@ function syncControls() {
   $('pos').value = Math.round((o.pos ?? baseTpl().pos ?? 0.72) * 100); $('posVal').textContent = `${$('pos').value}%`;
   $('maxW').value = Math.round((t.maxWidth ?? 0.88) * 100); $('maxWVal').textContent = `${$('maxW').value}%`;
   $('lineGap').value = Math.round((t.lineGap ?? 1.16) * 100); $('lineGapVal').textContent = ($('lineGap').value / 100).toFixed(2);
+  const one = t.oneLine ? 'one' : 'auto';
+  $('linesCtl').querySelectorAll('button').forEach(b => { const on = b.dataset.v === one; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
   const align = t.align || 'center';
   $('alignCtl').querySelectorAll('button').forEach(b => { const on = b.dataset.v === align; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
   $('hinglish').checked = S.hinglish;
@@ -257,6 +296,10 @@ bind('strokeW', el => { S.o.strokeW = +el.value; }, el => { $('strokeWVal').text
 bind('shadow', el => { S.o.shadow = el.checked; });
 bind('bgColor', el => { S.o.bgColor = el.value; if (S.o.bgOp == null) S.o.bgOp = 60; syncControls(); });
 bind('bgOp', el => { S.o.bgOp = +el.value; }, el => { $('bgOpVal').textContent = `${el.value}%`; });
+$('linesCtl').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.o.oneLine = b.dataset.v === 'one' || null; syncControls(); commit();
+});
 $('alignCtl').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   S.o.align = b.dataset.v; syncControls(); commit();
@@ -398,6 +441,7 @@ var timeline = mountTimeline($('timeline'), {
   soundsHost: $('paneSnd'),
   openSounds: () => { showLTab('snd'); if (matchMedia('(max-width: 1100px)').matches) $('paneSnd').scrollIntoView({ block: 'start', behavior: 'smooth' }); return true; },
   addText: () => addText(),
+  selectWord: (si, wi) => { S.wordSel = si == null ? null : [si, wi]; renderWordUI(); if (si != null) showRTab('style'); },
   clip: () => S.o.clip || null,
   splitAt: t => {
     const i = C.indexAt(S.segments, t), seg = S.segments[i];
@@ -455,6 +499,19 @@ function renderTextUI() {
   $('txtTime').hidden = !!S.image;
   if (!L) return;
   if (document.activeElement !== $('txtText')) $('txtText').value = L.text;
+  const chips = $('txtChips'); chips.innerHTML = '';
+  L.text.split(/\s+/).filter(Boolean).forEach((w, i) => {
+    const c = document.createElement('button'); c.type = 'button'; c.className = 'chip' + (S.txtWord === i ? ' on' : '');
+    c.textContent = w; if (L.wordColors && L.wordColors[i]) c.style.color = L.wordColors[i];
+    c.onclick = () => { S.txtWord = S.txtWord === i ? null : i; renderTextUI(); };
+    chips.appendChild(c);
+  });
+  $('txtWordRow').hidden = S.txtWord == null;
+  if (S.txtWord != null) { $('txtWordName').textContent = L.text.split(/\s+/).filter(Boolean)[S.txtWord] || ''; $('txtWordColor').value = (L.wordColors && L.wordColors[S.txtWord]) || '#ffe600'; }
+  const tp = L.tpl && TEMPLATES.find(x => x.id === L.tpl);
+  $('txtTplName').textContent = tp ? tp.name : 'None (plain text)';
+  $('txtTplClear').hidden = !tp;
+  $('txtEdit').classList.toggle('has-tpl', !!tp);
   $('txtFont').value = L.font;
   $('txtSize').value = Math.round(L.size * 100); $('txtSizeVal').textContent = $('txtSize').value;
   $('txtBold').setAttribute('aria-pressed', !!L.bold); $('txtItalic').setAttribute('aria-pressed', !!L.italic);
@@ -466,8 +523,10 @@ function renderTextUI() {
   if (document.activeElement !== $('txtEnd')) $('txtEnd').value = fmtT(L.end);
 }
 function selectText(id, focus) {
+  if (S.textSel !== id) S.txtWord = null;
   S.textSel = id;
   showRTab('text'); renderTextUI(); timeline.render();
+  const L = curText(); gallery.select(L && L.tpl ? L.tpl : null);
   if (focus) { $('txtText').focus(); $('txtText').select(); }
 }
 function patchText(p, save = true) {
@@ -492,6 +551,17 @@ function addText() {
 }
 $('txtAdd').onclick = () => addText();
 $('txtAdd2').onclick = () => addText();
+$('txtTplPick').onclick = () => { showLTab('tpl'); toast('Pick a style: it goes on the selected text.'); };
+$('txtTplClear').onclick = () => patchText({ tpl: null });
+const txtWordColour = (color, save) => {
+  const L = curText(); if (!L || S.txtWord == null) return;
+  const wc = { ...(L.wordColors || {}) };
+  if (color) wc[S.txtWord] = color; else delete wc[S.txtWord];
+  patchText({ wordColors: wc }, save);
+};
+$('txtWordColor').addEventListener('input', e => txtWordColour(e.target.value, false));
+$('txtWordColor').addEventListener('change', e => txtWordColour(e.target.value, true));
+$('txtWordReset').onclick = () => txtWordColour(null, true);
 $('txtText').addEventListener('input', e => patchText({ text: e.target.value }, false));
 $('txtText').addEventListener('change', () => commit());
 $('txtFont').onchange = e => patchText({ font: e.target.value });
@@ -536,6 +606,82 @@ $('txtDel').onclick = () => {
   S.o.texts = texts().filter(l => l.id !== S.textSel); S.textSel = null;
   commit(); renderTextUI(); timeline.render(); toast('Text deleted. Press Ctrl+Z to undo.');
 };
+// A text can wear one of the caption templates: same renderer as captions, so it looks and animates the
+// same, but shown whole (one block) over the text's own time, at its own place and size.
+const tplChunkCache = new Map();
+function tplChunk(L, still) {
+  const key = `${L.text}|${L.start}|${L.end}|${still}|${JSON.stringify(L.wordColors || {})}`;
+  let c = tplChunkCache.get(L.id);
+  if (!c || c.key !== key) {
+    const wc = L.wordColors || {};
+    const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), still ? 0 : L.start, still ? 1 : L.end).map((w, i) => (wc[i] ? { ...w, color: wc[i] } : w));
+    c = { key, chunk: buildChunks(words, 999, 9999)[0] || null };
+    tplChunkCache.set(L.id, c);
+  }
+  return c.chunk;
+}
+function drawTplText(c2, W, H, L, t, still) {
+  const tp = TEMPLATES.find(x => x.id === L.tpl);
+  const chunk = String(L.text).trim() && tplChunk(L, still);
+  if (!tp || !chunk) return null;
+  const scale = L.size / (tp.size * 1.6), px = tp.size * Math.min(W, H) * 1.6 * scale;
+  c2.save();
+  c2.translate((L.x - 0.5) * W, 0);
+  drawCaption(c2, W, H, chunk, still ? 1 : t, { ...tp }, { scale, pos: L.y });
+  c2.restore();
+  return { px, ...tplBox(L, tp, W, H, scale) };
+}
+// Where a template actually puts the text: drawn once off-screen (final state) and measured, then cached.
+const boxCache = new Map(), boxCanvas = document.createElement('canvas');
+function tplBox(L, tp, W, H, scale) {
+  const key = `${L.text}|${L.tpl}|${L.size}|${L.x}|${L.y}|${W}|${H}`;
+  const hit = boxCache.get(L.id);
+  if (hit && hit.key === key) return hit.box;
+  const k = Math.min(1, 360 / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+  boxCanvas.width = w; boxCanvas.height = h;
+  const c = boxCanvas.getContext('2d', { willReadFrequently: true });
+  c.clearRect(0, 0, w, h);
+  const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), 0, 1), chunk = buildChunks(words, 999, 9999)[0];
+  c.save(); c.translate((L.x - 0.5) * w, 0);
+  if (chunk) drawCaption(c, w, h, chunk, 1, { ...tp }, { scale, pos: L.y });
+  c.restore();
+  const d = c.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const box = x1 < 0 ? { x0: L.x * W - 20, y0: L.y * H - 20, w: 40, h: 40 } : { x0: x0 / k, y0: y0 / k, w: (x1 - x0 + 1) / k, h: (y1 - y0 + 1) / k };
+  boxCache.set(L.id, { key, box });
+  return box;
+}
+/** Draw every text visible at t (all of them on a photo); returns their boxes for hit-testing. */
+function drawTexts(c2, W, H, t, still = false) {
+  const boxes = [];
+  for (const L of layersAt(texts(), t, still)) {
+    const b = L.tpl ? drawTplText(c2, W, H, L, t, still) : drawLayer(c2, W, H, L);
+    if (b) boxes.push({ id: L.id, ...b });
+  }
+  return boxes;
+}
+function deselectText() {
+  if (!S.textSel) return false;
+  S.textSel = null;
+  renderTextUI(); timeline.render(); gallery.select(S.tplId);
+  return true;
+}
+// Template thumbnails use a frame of the user's own video (or photo).
+var thumbBg = document.createElement('canvas'), thumbBgReady = false;
+thumbBg.width = 400; thumbBg.height = 300;
+function updateThumbBg() {
+  const src = S.image || (video.readyState >= 2 && video.videoWidth ? video : null);
+  if (!src) { thumbBgReady = false; return; }
+  const w = src.naturalWidth || src.videoWidth, h = src.naturalHeight || src.videoHeight, k = Math.max(400 / w, 300 / h);
+  const x = thumbBg.getContext('2d');
+  x.drawImage(src, (400 - w * k) / 2, (300 - h * k) / 2, w * k, h * k);
+  x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(0, 0, 400, 300);
+  thumbBgReady = true;
+}
+video.addEventListener('seeked', updateThumbBg);
+video.addEventListener('loadeddata', () => setTimeout(updateThumbBg, 150));
+
 /** Dashed box around the selected text in the preview (never in the export). */
 function drawTextSelection() {
   const b = S.textBoxes.find(x => x.id === S.textSel);
@@ -544,6 +690,33 @@ function drawTextSelection() {
   ctx.save(); ctx.setLineDash([8, 6]); ctx.lineWidth = Math.max(2, canvas.width / 400); ctx.strokeStyle = '#a78bfa';
   ctx.strokeRect(b.x0 - pad, b.y0 - pad * 0.6, b.w + pad * 2, b.h + pad * 1.2); ctx.restore();
 }
+
+// ---------- one word, its own colour ----------
+S.wordSel = null;
+const normW = w => String(w).toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+function selWord() { const [si, wi] = S.wordSel || []; return S.wordSel && S.segments[si] && S.segments[si].words[wi] || null; }
+function renderWordUI() {
+  const w = selWord();
+  $('wordGroup').hidden = !w; $('wordTip').hidden = !!w;
+  if (!w) return;
+  $('wordName').textContent = `“${transform(w.text)}”`;
+  $('wordColor').value = toHex(w.color || tpl().hiColor || tpl().color || '#FFE600');
+}
+/** Set (or clear, with null) the colour of the selected word, or of every same word. */
+function colourWord(color, save) {
+  const w = selWord(); if (!w) return;
+  const all = $('wordAll').checked, key = normW(w.text);
+  const [si, wi] = S.wordSel;
+  S.segments = S.segments.map((seg, i) => ({ ...seg, words: seg.words.map((x, j) => {
+    if (!((i === si && j === wi) || (all && normW(x.text) === key))) return x;
+    const y = { ...x }; if (color) y.color = color; else delete y.color; return y;
+  }) }));
+  timeline.render();
+  if (save) commit();
+}
+$('wordColor').addEventListener('input', e => colourWord(e.target.value, false));
+$('wordColor').addEventListener('change', e => colourWord(e.target.value, true));
+$('wordReset').onclick = () => { colourWord(null, true); renderWordUI(); };
 
 // ---------- sound effects ----------
 /** Hand-placed sounds (with their index) plus the automatic one on every caption. */
@@ -743,7 +916,7 @@ async function loadImage(file) {
   $('time').textContent = 'Photo';
   renderSegs(); syncActions(); refreshLookThumbs();
   if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); showRTab('text'); }
-  renderMedia();
+  renderMedia(); updateThumbBg();
   if (!opening) createProject(file, 'photo');
   status('Photo loaded. Type your text on the left, drag it on the photo, then press Export.');
   return true;
@@ -845,7 +1018,7 @@ $('seek').oninput = e => {
       const L = texts().find(l => l.id === id);
       drag = { text: L, x0: e.clientX, y0: e.clientY, lx: L.x, ly: L.y, moved: false, w: r.width, h: r.height };
       if (S.textSel !== id) selectText(id);
-    } else drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false };
+    } else drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false, wasSel: !!S.textSel };
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('dblclick', () => { if (curText()) { $('txtText').focus(); $('txtText').select(); } });
@@ -870,7 +1043,8 @@ $('seek').oninput = e => {
   const end = () => {
     if (!drag) return;
     canvas.classList.remove('dragging');
-    if (drag.moved) commit(); else if (!drag.text) togglePlay();
+    if (drag.moved) commit();
+    else if (!drag.text) { if (drag.wasSel) deselectText(); else togglePlay(); }
     drag = null;
   };
   canvas.addEventListener('pointerup', end);
@@ -1484,7 +1658,7 @@ async function exportPhoto() {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
   x.drawImage(graded(img, w, h), 0, 0, w, h);
-  drawLayers(x, w, h, texts(), 0, true);
+  drawTexts(x, w, h, 0, true);
   const png = /png/i.test(S.file.type);
   const blob = await new Promise(r => c.toBlob(r, png ? 'image/png' : 'image/jpeg', 0.95));
   if (!blob) return toast('Couldn’t save the photo in this browser.');
@@ -1531,7 +1705,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
     else if (video.readyState >= 2 && video.videoWidth) drawVideo(xctx, size.w, size.h);
     else { xctx.fillStyle = '#0d0d16'; xctx.fillRect(0, 0, size.w, size.h); }
     drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, overlay ? { ...opts, fill: null } : opts);
-    drawLayers(xctx, size.w, size.h, texts(), t);
+    drawTexts(xctx, size.w, size.h, t);
   };
   let stopClock = null;
   try {
@@ -1548,7 +1722,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
         draw: (src, t, w, h) => {
           drawVideo(xctx, size.w, size.h, src, w, h);
           drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, opts);
-          drawLayers(xctx, size.w, size.h, texts(), t);
+          drawTexts(xctx, size.w, size.h, t);
         },
         onProgress: (p, t) => {
           $('exportBar').style.width = `${(p * 100).toFixed(1)}%`;
@@ -1807,7 +1981,7 @@ function drawFrame() {
     const img = S.image;
     if (Math.abs(W / H - img.naturalWidth / img.naturalHeight) > 0.01) fitCanvas(img.naturalWidth, img.naturalHeight);
     ctx.drawImage(graded(img, canvas.width, canvas.height), 0, 0, canvas.width, canvas.height);
-    S.textBoxes = drawLayers(ctx, canvas.width, canvas.height, texts(), 0, true);
+    S.textBoxes = drawTexts(ctx, canvas.width, canvas.height, 0, true);
     drawTextSelection();
     return 0;
   }
@@ -1818,7 +1992,7 @@ function drawFrame() {
     if (vw && Math.abs(W / H - r.sw / r.sh) > 0.01) fitCanvas(r.sw, r.sh);
     if (video.readyState >= 2 && vw) drawVideo(ctx, canvas.width, canvas.height); else drawPlaceholder();
     const t = video.currentTime;
-    if (!S.segments.length && S.file) {
+    if (!S.segments.length && S.file && !texts().length) {
       const st = (performance.now() / 1000) % 4.2;
       drawCaption(ctx, canvas.width, canvas.height, findChunk(sampleChunks(), st), st, t0, opts);
       const fs = Math.max(11, canvas.width * 0.028);
@@ -1830,7 +2004,7 @@ function drawFrame() {
     } else {
       drawCaption(ctx, canvas.width, canvas.height, findChunk(fileChunks(), t), t, t0, opts);
     }
-    S.textBoxes = drawLayers(ctx, canvas.width, canvas.height, texts(), t);
+    S.textBoxes = drawTexts(ctx, canvas.width, canvas.height, t);
     drawTextSelection();
     return t;
   }
@@ -1871,6 +2045,7 @@ document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); }
+  else if (e.key === 'Escape' && !typing && S.textSel) deselectText();
   else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.textSel && !$('timeline').contains(document.activeElement)) { e.preventDefault(); $('txtDel').click(); }
   else if (e.key === ' ' && !typing && document.activeElement.tagName !== 'BUTTON' && !$('editor').hidden) { e.preventDefault(); togglePlay(); }
 });
@@ -2114,6 +2289,8 @@ function goHome() {
   renderProjects();
 }
 $('homeBtn').onclick = goHome;
+// The logo is the home page (this studio): inside the editor it goes back to the projects without reloading.
+$('logoLink').addEventListener('click', e => { if (!$('editor').hidden) { e.preventDefault(); goHome(); } });
 
 // ---------- media + details panels ----------
 function renderMedia() {

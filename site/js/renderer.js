@@ -313,6 +313,8 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   const items = chunk.words.map((w, i) => {
     const state = i < active ? 'past' : i === active ? 'active' : 'pending';
     const s = styleFor(tpl, i, n, key, state);
+    // A colour the editor picked for this one word wins over the template.
+    if (w.color) { s.color = w.color; s.gradient = null; }
     let ipx = px * s.size;
     const text = textFor(w.text, s);
     const it = { w, i, text, s, state, indic: INDIC.test(w.text) };
@@ -330,11 +332,20 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   });
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   ctx.font = fontString(tpl, px);
-  const space = Math.max(ctx.measureText(' ').width, px * 0.26) + (tpl.spacing || 0) * px + (tpl.gap || 0) * px;
+  let space = Math.max(ctx.measureText(' ').width, px * 0.26) + (tpl.spacing || 0) * px + (tpl.gap || 0) * px;
 
   // Lines: explicit pattern, one word per line, or wrap to width.
   const lines = [];
-  if (tpl.lines) {
+  if (tpl.oneLine || opts.oneLine) {
+    // Everything on one line: shrink the words together if they don't fit.
+    const total = items.reduce((a, it, k) => a + it.width + (k ? space : 0), 0);
+    if (total > maxW) {
+      const f = maxW / total;
+      items.forEach(it => { it.px *= f; it.width *= f; });
+      space *= f;
+    }
+    lines.push({ items });
+  } else if (tpl.lines) {
     let k = 0, li = 0;
     while (k < items.length) {
       const cnt = tpl.lines[Math.min(li, tpl.lines.length - 1)];
@@ -472,7 +483,40 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
     }
     ctx.restore();
   });
+  // Auto emoji: a matching emoji pops above the word being said.
+  if (tpl.emoji) {
+    const it = items.find(x => x.state === 'active');
+    const em = it && emojiFor(it.w.text);
+    if (em) {
+      const since = t - it.w.start, e2 = easeOutBack(clamp(since / 0.25));
+      ctx.save();
+      ctx.globalAlpha = alpha * clamp(since / 0.1);
+      ctx.font = `${Math.round(it.px * 1.15 * (0.6 + 0.4 * e2))}px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(em, it.x, it.y - it.px * 0.75);
+      ctx.restore();
+    }
+  }
   ctx.restore();
+}
+
+// Words that get an emoji in "auto emoji" styles (English, Hinglish, Hindi).
+const EMOJI = [
+  [/^(money|paisa|paise|paisaa|rupee|rupees|rs|cash|salary|lakh|lakhs|crore|crores|पैसा|पैसे|लाख|करोड़)$/, '💰'],
+  [/^(love|pyaar|pyar|dil|heart|प्यार|दिल)$/, '❤️'], [/^(fire|hot|lit|aag|आग)$/, '🔥'],
+  [/^(happy|khush|smile|haso|खुश)$/, '😄'], [/^(sad|dukh|cry|rona|दुख)$/, '😢'],
+  [/^(time|samay|waqt|time's|समय|वक्त)$/, '⏰'], [/^(idea|soch|tip|tips|trick|hack)$/, '💡'],
+  [/^(win|winner|success|jeet|kamyab|जीत)$/, '🏆'], [/^(think|socho|sochna|सोचो)$/, '🤔'],
+  [/^(food|khana|eat|khao|खाना)$/, '🍽️'], [/^(gym|workout|fit|strong|power)$/, '💪'],
+  [/^(phone|mobile|call)$/, '📱'], [/^(car|gaadi|गाड़ी)$/, '🚗'], [/^(home|ghar|घर)$/, '🏠'],
+  [/^(wow|amazing|crazy|insane|kamaal|कमाल)$/, '🤯'], [/^(stop|ruko|mat|no|nahi|नहीं)$/, '🛑'],
+  [/^(secret|raaz|राज़|राज)$/, '🤫'], [/^(learn|seekho|sikho|study|padhai)$/, '📚'],
+  [/^(world|duniya|दुनिया)$/, '🌍'], [/^(music|song|gaana|गाना)$/, '🎵'], [/^(laugh|funny|lol|haha)$/, '😂'],
+];
+export function emojiFor(word) {
+  const w = String(word).toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+  for (const [re, e] of EMOJI) if (re.test(w)) return e;
+  return null;
 }
 
 // Evenly spread words across a time range — used for previews, manual edits and segment-level transcripts.
