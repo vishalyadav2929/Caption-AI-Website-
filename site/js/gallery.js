@@ -145,10 +145,11 @@ export function mountGallery({ tabsEl, gridEl, langEl, countEl, selected, onSele
 }
 
 // A single looping phone mockup for the landing hero.
-export function mountPhone(canvas, tplId, text, hue) {
+export function mountPhone(canvas, tplId, text, hue, { scene = false, w = 360, h = 640 } = {}) {
   const tpl = TEMPLATES.find(t => t.id === tplId);
   const ctx = canvas.getContext('2d');
-  const W = canvas.width = 360, H = canvas.height = 640;
+  const W = canvas.width = w, H = canvas.height = h;
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const chunks = buildChunks(spreadWords(text, 0.1, LOOP - 0.3), tpl.words, 40);
   const t0 = performance.now();
   let lastDraw = 0, visible = true;
@@ -157,11 +158,18 @@ export function mountPhone(canvas, tplId, text, hue) {
     requestAnimationFrame(loop);
     if (!visible || now - lastDraw < FRAME_MS) return;
     lastDraw = now;
-    const sec = (now - t0) / 1000, t = sec % LOOP;
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, `hsl(${hue},40%,${20 + 4 * Math.sin(sec / 1.6)}%)`);
-    g.addColorStop(1, `hsl(${(hue + 60) % 360},45%,8%)`);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const sec = still ? 2 : (now - t0) / 1000, t = still ? LOOP * 0.6 : sec % LOOP;
+    if (scene) {
+      paintScene(ctx, W, H, sec);
+      const v = ctx.createLinearGradient(0, 0, 0, H);
+      v.addColorStop(0, `hsla(${hue},60%,30%,.35)`); v.addColorStop(1, 'rgba(0,0,0,.35)');
+      ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+    } else {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, `hsl(${hue},40%,${20 + 4 * Math.sin(sec / 1.6)}%)`);
+      g.addColorStop(1, `hsl(${(hue + 60) % 360},45%,8%)`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
     drawCaption(ctx, W, H, findChunk(chunks, t), t, tpl);
   })(t0);
 }
