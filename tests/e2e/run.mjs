@@ -371,6 +371,8 @@ await step('drag the captions up/down on the video; A−/A+ change size', async 
   const after = await m.evaluate(() => window.__vcz.S.o.pos);
   assert.ok(after < before - 0.15, `position moved up: ${before} → ${after}`);
   assert.equal(await m.evaluate(() => document.querySelector('video').paused), true, 'dragging must not start playback');
+  // A−/A+ sit on the preview in the middle layout (the full-height layouts show only the video).
+  await m.click('#layBtn'); await m.click('[data-lay="center"]');
   await m.click('#szUp'); await m.click('#szUp');
   assert.equal(await m.evaluate(() => window.__vcz.S.o.scale), 1.2);
   await m.click('#szDown');
