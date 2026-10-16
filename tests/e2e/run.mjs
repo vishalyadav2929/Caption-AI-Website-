@@ -312,7 +312,7 @@ await step('no horizontal overflow on phones, tablets and laptops (incl. editor 
       const r = await m.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, innerWidth]);
       assert.ok(r[0] <= r[1] + 1 && r[2] <= r[1] + 1, `${w}px ${label}: page is ${r[0]}px wide (viewport ${r[1]}, innerWidth ${r[2]})`);
     };
-    for (const p of ['index.html', 'templates.html', 'privacy.html', 'app.html']) { await m.goto(`${BASE}/${p}`); await m.waitForTimeout(300); await over(p); }
+    for (const p of ['about.html', 'templates.html', 'privacy.html', 'app.html']) { await m.goto(`${BASE}/${p}`); await m.waitForTimeout(300); await over(p); }
     await m.click('#startSkip');
     await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
     await m.waitForTimeout(400);
@@ -466,7 +466,7 @@ await step('phone: full screen works without the Fullscreen API (iPhone), typing
   await m.locator('.seg textarea').first().blur();
   await m.waitForTimeout(100);
   assert.equal(await m.evaluate(() => getComputedStyle(document.querySelector('.stage')).position), 'sticky', 'pinned again');
-  await m.goto(`${BASE}/index.html`);
+  await m.goto(`${BASE}/about.html`);
   await m.waitForSelector('#grid .tpl');
   const visible = () => m.$$eval('#grid .tpl', els => els.filter(e => e.offsetParent).length);
   assert.equal(await visible(), 12);
@@ -478,7 +478,7 @@ await step('phone: full screen works without the Fullscreen API (iPhone), typing
 await step('home: example videos show live captions on real clips (from examples/manifest.json)', async () => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const m = await ctx.newPage();
-  await m.goto(`${BASE}/index.html`);
+  await m.goto(`${BASE}/about.html`);
   assert.equal(await m.isVisible('#showcase'), false, 'hidden while the manifest is empty');
   await m.route('**/examples/manifest.json', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ video: 'demo.webm', captions: 'demo.srt', templates: ['classic', 'crazy', 'nope'] }] }) }));
   await m.route('**/examples/demo.webm', async r => r.fulfill({ contentType: 'video/webm', body: await readFile(join(FIX, 'portrait.webm')) }));
@@ -538,7 +538,7 @@ await step('fast mode (server): captions in one go when the owner has set it up;
 await step('installable app: manifest, icons, service worker, opens offline', async () => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const m = await ctx.newPage();
-  await m.goto(`${BASE}/index.html`);
+  await m.goto(`${BASE}/about.html`);
   const man = await m.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
   assert.equal(man.display, 'standalone');
   for (const ic of man.icons) assert.equal((await m.request.get(`${BASE}/${ic.src}`)).status(), 200, ic.src);
@@ -558,7 +558,7 @@ await step('home: live demo plays the manifest clip and switches caption style o
   await m.route('**/examples/manifest.json', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], demo: { video: 'demo.webm', captions: 'demo.srt' } }) }));
   await m.route('**/examples/demo.webm', async r => r.fulfill({ contentType: 'video/webm', body: await readFile(join(FIX, 'portrait.webm')) }));
   await m.route('**/examples/demo.srt', async r => r.fulfill({ contentType: 'text/plain', body: await readFile(join(FIX, 'sample.srt')) }));
-  await m.goto(`${BASE}/index.html`);
+  await m.goto(`${BASE}/about.html`);
   await m.locator('#demo').scrollIntoViewIfNeeded();
   await m.waitForSelector('.demo-style');
   assert.ok(await m.locator('.demo-style').count() >= 8);

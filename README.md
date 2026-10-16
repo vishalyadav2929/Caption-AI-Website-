@@ -132,9 +132,10 @@ The site is a Progressive Web App: on Android Chrome use **Add to Home screen / 
 
 ```
 site/            ← what Netlify publishes
-  index.html     landing page
+  index.html     forwards to the studio (on Netlify "/" serves app.html directly, see netlify.toml)
+  about.html     landing page (features, demo, pricing, FAQ)
   templates.html all templates, live previews, 11 preview languages
-  app.html       editor (upload → languages → generate → edit → export)
+  app.html       the studio, and the home page: projects dashboard + editor
   privacy.html   every outside request the site makes
   css/styles.css
   js/app.js            editor

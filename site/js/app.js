@@ -2289,6 +2289,8 @@ function goHome() {
   renderProjects();
 }
 $('homeBtn').onclick = goHome;
+// The logo is the home page (this studio): inside the editor it goes back to the projects without reloading.
+$('logoLink').addEventListener('click', e => { if (!$('editor').hidden) { e.preventDefault(); goHome(); } });
 
 // ---------- media + details panels ----------
 function renderMedia() {
