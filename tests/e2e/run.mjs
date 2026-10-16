@@ -770,10 +770,12 @@ await step('manual text: typed by hand, shown all at once, drag to move, on the 
   await m.click('#exportBtn'); await m.waitForSelector('#xDlg[open]');
   await m.check('input[name=xKind][value=video]'); await m.click('#xGo');
   const d = await dl; const file = join(OUT, 'text-' + d.suggestedFilename()); await d.saveAs(file);
-  const at1 = redPx(file, 1), at5 = redPx(file, 5);
-  assert.ok(at1 > 300, `text in export at 1 s: ${at1} red px`);
-  assert.ok(at5 < 50, `text gone after its end time: ${at5} red px at 5 s`);
-  console.log('   text export: red px at 1 s', at1, '| at 5 s', at5);
+  // Pixels in the top half that differ strongly from the source video at the same moment = the text.
+  const diffPx = ss => +execFileSync('bash', ['-c', `paste -d' ' <(ffmpeg -v error -ss ${ss} -i "${file}" -frames:v 1 -vf "crop=iw:ih*0.5:0:0,format=rgb24" -f rawvideo - | od -An -tu1 -v -w3) <(ffmpeg -v error -ss ${ss} -i "${join(FIX, 'portrait.webm')}" -frames:v 1 -vf "crop=iw:ih*0.5:0:0,format=rgb24" -f rawvideo - | od -An -tu1 -v -w3) | awk '{d=($1-$4)^2+($2-$5)^2+($3-$6)^2; if (d>20000) n++} END {print n+0}'`]).toString();
+  const at1 = diffPx(1), at5 = diffPx(5);
+  assert.ok(at1 > 300, `text in export at 1 s: ${at1} changed px`);
+  assert.ok(at5 < at1 / 10, `text gone after its end time: ${at5} changed px at 5 s`);
+  console.log('   text export: changed px at 1 s', at1, '| at 5 s', at5);
   assert.deepEqual(errs, []);
   await ctx.close();
 });

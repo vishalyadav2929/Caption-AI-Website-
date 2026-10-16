@@ -159,6 +159,7 @@ const gallery = mountGallery({
     (mq.matches ? $('mTpl') : home).appendChild($('grid'));
     // The timeline would make the pinned preview too tall on phones: put it in the page flow below it.
     if (mq.matches) $('main').after($('timeline')); else $('tlDock').appendChild($('timeline'));
+    $('editor').classList.toggle('no-tl', mq.matches || $('timeline').hidden);
     if (mq.matches && $('ltabTpl').classList.contains('on')) showLTab('text');
   };
   if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
@@ -561,6 +562,7 @@ function seekTo(t) { if (S.mode === 'file' && video.src) video.currentTime = Mat
 
 function renderSegs() {
   $('timeline').hidden = !S.file || S.mode !== 'file' || !!S.image;
+  $('editor').classList.toggle('no-tl', $('timeline').hidden || !$('tlDock').contains($('timeline')));
   if (timeline && !$('timeline').hidden) timeline.render();
   const box = $('segs');
   box.innerHTML = '';

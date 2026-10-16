@@ -157,6 +157,7 @@ export function mountTimeline(root, api) {
     txtRow.innerHTML = '';
     const list = api.texts ? api.texts() : [];
     txtRow.hidden = !list.length;
+    inner.classList.toggle('has-txt', list.length > 0);
     list.forEach(L => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'ttx' + (api.selectedText && api.selectedText() === L.id ? ' sel' : '');
