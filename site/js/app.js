@@ -9,6 +9,7 @@ import { exportWebCodecs } from './export-webcodecs.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
 import { mountTimeline, wavePeaks } from './timeline.js';
 import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
+import { TEXT_FONTS, newLayer, drawLayers, hitLayer } from './text-layers.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
 
@@ -94,6 +95,8 @@ function tpl() {
   return r;
 }
 const wordsPerCaption = () => S.o.words || baseTpl().words;
+// What survives a template change or "Reset to template": everything that isn't caption styling.
+const keepO = () => ({ scale: S.o.scale || 1, sfx: S.o.sfx, sfxAuto: S.o.sfxAuto, grade: S.o.grade, texts: S.o.texts });
 
 // ---------- undo / redo ----------
 let hist = [], hIdx = -1;
@@ -111,7 +114,8 @@ function restore(s) {
   const d = JSON.parse(s);
   S.segments = d.segments; S.o = d.o; S.tplId = d.tplId; S.hinglish = d.hinglish;
   gallery.select(S.tplId);
-  syncControls(); renderSegs(); syncActions();
+  if (S.textSel && !texts().some(l => l.id === S.textSel)) S.textSel = null;
+  syncControls(); renderSegs(); syncActions(); renderTextUI();
 }
 function undo() { if (hIdx > 0 && !S.exporting) { hIdx--; restore(hist[hIdx]); syncUndo(); } }
 function redo() { if (hIdx < hist.length - 1 && !S.exporting) { hIdx++; restore(hist[hIdx]); syncUndo(); } }
@@ -142,7 +146,7 @@ const gallery = mountGallery({
     S.tplId = t.id;
     // Style overrides belong to the old template. Captions are untouched: each template shows long captions
     // in pieces of its own size at render time (e.g. one word at a time for "Pill").
-    S.o = { scale: S.o.scale || 1 };
+    S.o = keepO();
     syncControls(); renderSegs(); commit();
   },
 });
@@ -154,10 +158,58 @@ const gallery = mountGallery({
   const place = () => {
     (mq.matches ? $('mTpl') : home).appendChild($('grid'));
     // The timeline would make the pinned preview too tall on phones: put it in the page flow below it.
-    if (mq.matches) $('main').after($('timeline')); else $('meta').before($('timeline'));
+    if (mq.matches) $('main').after($('timeline')); else $('tlDock').appendChild($('timeline'));
+    $('editor').classList.toggle('no-tl', mq.matches || $('timeline').hidden);
+    if (mq.matches && $('ltabTpl').classList.contains('on')) showLTab('text');
   };
   if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
   place();
+}
+
+// ---------- editor layout (computers): preview left / middle / right, panel sizes, saved ----------
+{
+  const app = $('editor'), KEY = 'vcz-layout', DEF = { lay: 'center', lw: 300, rw: 340, th: 230 };
+  const L = { ...DEF };
+  try { Object.assign(L, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* private mode */ }
+  const apply = () => {
+    app.dataset.lay = L.lay;
+    app.style.setProperty('--lw', `${L.lw}px`); app.style.setProperty('--rw', `${L.rw}px`); app.style.setProperty('--th', `${L.th}px`);
+    document.querySelectorAll('[data-lay]').forEach(b => b.classList.toggle('on', b.dataset.lay === L.lay));
+  };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(L)); } catch { /* private mode */ } };
+  const limits = { lw: [220, () => innerWidth * 0.4], rw: [260, () => innerWidth * 0.4], th: [140, () => innerHeight * 0.6] };
+  const set = (key, v) => { const [min, max] = limits[key]; L[key] = Math.round(Math.min(max(), Math.max(min, v))); apply(); };
+  const splitter = (el, key, target) => {
+    el.tabIndex = 0;
+    // Which way grows the panel depends on which side of the bar it sits (it changes with the layout).
+    const sign = () => (key === 'th' ? -1 : target().getBoundingClientRect().left < el.getBoundingClientRect().left ? 1 : -1);
+    el.onpointerdown = e => {
+      e.preventDefault(); el.setPointerCapture(e.pointerId); el.classList.add('on');
+      const p0 = key === 'th' ? e.clientY : e.clientX, v0 = L[key], k = sign();
+      el.onpointermove = ev => set(key, v0 + k * ((key === 'th' ? ev.clientY : ev.clientX) - p0));
+      el.onpointerup = el.onpointercancel = () => { el.onpointermove = el.onpointerup = el.onpointercancel = null; el.classList.remove('on'); save(); timeline.render(); };
+    };
+    el.onkeydown = e => {
+      const d = { ArrowLeft: -16, ArrowUp: -16, ArrowRight: 16, ArrowDown: 16 }[e.key];
+      if (!d) return;
+      e.preventDefault(); set(key, L[key] + d * sign() * (key === 'th' ? 1 : 1)); save(); timeline.render();
+    };
+  };
+  splitter($('splitL'), 'lw', () => document.querySelector('.panel.tools'));
+  splitter($('splitR'), 'rw', () => document.querySelector('.panel.props'));
+  splitter($('splitT'), 'th', () => $('tlDock'));
+  const menu = $('layMenu'), btn = $('layBtn');
+  const open = on => { menu.hidden = !on; btn.setAttribute('aria-expanded', on); };
+  btn.onclick = e => { e.stopPropagation(); open(menu.hidden); };
+  menu.onclick = e => {
+    e.stopPropagation();
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.lay) L.lay = b.dataset.lay;
+    if (b.id === 'layReset') Object.assign(L, { lw: DEF.lw, rw: DEF.rw, th: DEF.th });
+    apply(); save(); open(false); timeline.render();
+  };
+  document.addEventListener('click', () => open(false));
+  apply();
 }
 
 // ---------- style controls ----------
@@ -205,7 +257,7 @@ $('alignCtl').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   S.o.align = b.dataset.v; syncControls(); commit();
 });
-$('resetStyle').onclick = () => { S.o = { scale: 1 }; syncControls(); commit(); toast('Style reset to the template.'); };
+$('resetStyle').onclick = () => { S.o = { ...keepO(), scale: 1 }; syncControls(); commit(); toast('Style reset to the template.'); };
 $('words').addEventListener('input', e => { $('wordsVal').textContent = e.target.value; });
 $('words').addEventListener('change', e => {
   S.o.words = +e.target.value;
@@ -213,6 +265,18 @@ $('words').addEventListener('change', e => {
   renderSegs(); commit();
 });
 $('hinglish').onchange = e => { S.hinglish = e.target.checked; renderSegs(); commit(); };
+
+// Left panel tabs: Templates · Text · Sounds. On phones the templates sit under the video instead.
+function showLTab(which) {
+  if (which === 'tpl' && matchMedia('(max-width: 1100px)').matches) which = 'text';
+  for (const [tab, pane, id] of [['ltabTpl', 'paneTpl', 'tpl'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd']]) {
+    const on = which === id;
+    $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
+  }
+}
+$('ltabTpl').onclick = () => showLTab('tpl');
+$('ltabText').onclick = () => showLTab('text');
+$('ltabSnd').onclick = () => showLTab('snd');
 
 // Panel tabs
 function showTab(which) {
@@ -281,13 +345,13 @@ function renderLooks() {
 /** Each look's thumbnail shows the current video frame in that look. */
 function refreshLookThumbs() {
   if (!grader.ok || $('paneColor').hidden) return;
-  const src = video.readyState >= 2 && video.videoWidth ? video : null;
+  const src = S.image || (video.readyState >= 2 && video.videoWidth ? video : null);
   document.querySelectorAll('.look canvas').forEach(c => {
     const x = c.getContext('2d');
     if (!src) { x.fillStyle = '#ccc'; x.fillRect(0, 0, c.width, c.height); return; }
     const id = c.parentElement.dataset.look;
     const out = id === 'none' ? src : graded(src, c.width, c.height, { ...DEFAULT_GRADE, look: id });
-    const vw = src.videoWidth, vh = src.videoHeight, k = Math.max(c.width / vw, c.height / vh);
+    const vw = src.videoWidth || src.naturalWidth, vh = src.videoHeight || src.naturalHeight, k = Math.max(c.width / vw, c.height / vh);
     if (out === src) x.drawImage(src, (c.width - vw * k) / 2, (c.height - vh * k) / 2, vw * k, vh * k);
     else x.drawImage(out, 0, 0, c.width, c.height);
   });
@@ -328,6 +392,17 @@ var timeline = mountTimeline($('timeline'), {
     setSegments(arr.filter(s => s.words.length));
   },
   sounds: SOUNDS,
+  soundsHost: $('paneSnd'),
+  openSounds: () => { showLTab('snd'); if (matchMedia('(max-width: 1100px)').matches) $('paneSnd').scrollIntoView({ block: 'start', behavior: 'smooth' }); return true; },
+  addText: () => addText(),
+  texts: () => texts(),
+  selectedText: () => S.textSel,
+  selectText: id => selectText(id),
+  timeText: (id, start, end, save) => {
+    const L = texts().find(l => l.id === id); if (!L) return;
+    L.start = +start.toFixed(2); L.end = +end.toFixed(2);
+    if (save) { commit(); renderTextUI(); timeline.render(); }
+  },
   soundList: () => allSounds(),
   previewSound: id => playSound(id, 0),
   addSound: id => { S.o.sfx = [...(S.o.sfx || []), { t: +(video.currentTime || 0).toFixed(2), id, vol: 0.8 }]; commit(); timeline.render(); playSound(id, 0); },
@@ -340,6 +415,118 @@ var timeline = mountTimeline($('timeline'), {
     setSegments(arr.filter(s => s.words.length));
   },
 });
+
+// ---------- text layers (typed by hand, shown exactly as typed) ----------
+S.textSel = null;
+S.textBoxes = [];
+const texts = () => S.o.texts || (S.o.texts = []);
+const curText = () => texts().find(l => l.id === S.textSel) || null;
+TEXT_FONTS.forEach(f => { const o = document.createElement('option'); o.value = f; o.textContent = f; o.style.fontFamily = `'${f}'`; $('txtFont').appendChild(o); });
+const mediaDur = () => (S.image ? 0 : isFinite(video.duration) ? video.duration : 0);
+function renderTextUI() {
+  const list = $('txtList');
+  list.innerHTML = '';
+  texts().forEach(L => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'txt-item' + (L.id === S.textSel ? ' on' : '');
+    const nm = document.createElement('span'); nm.textContent = L.text.split('\n')[0] || '(empty)'; nm.style.fontFamily = `'${L.font}'`;
+    b.appendChild(nm);
+    if (!S.image) { const t = document.createElement('small'); t.textContent = `${fmtT(L.start)} – ${fmtT(L.end)}`; b.appendChild(t); }
+    b.onclick = () => selectText(L.id);
+    list.appendChild(b);
+  });
+  const L = curText();
+  $('txtEdit').hidden = !L;
+  $('txtTime').hidden = !!S.image;
+  if (!L) return;
+  if (document.activeElement !== $('txtText')) $('txtText').value = L.text;
+  $('txtFont').value = L.font;
+  $('txtSize').value = Math.round(L.size * 100); $('txtSizeVal').textContent = $('txtSize').value;
+  $('txtBold').setAttribute('aria-pressed', !!L.bold); $('txtItalic').setAttribute('aria-pressed', !!L.italic);
+  $('txtAlign').querySelectorAll('button').forEach(b => { const on = b.dataset.v === L.align; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  $('txtColor').value = L.color; $('txtShadow').checked = !!L.shadow;
+  $('txtStroke').value = L.stroke; $('txtStrokeW').value = Math.round(L.strokeW * 100); $('txtStrokeWVal').textContent = $('txtStrokeW').value;
+  $('txtBg').value = L.bg; $('txtBgOp').value = L.bgOp; $('txtBgOpVal').textContent = `${L.bgOp}%`;
+  if (document.activeElement !== $('txtStart')) $('txtStart').value = fmtT(L.start);
+  if (document.activeElement !== $('txtEnd')) $('txtEnd').value = fmtT(L.end);
+}
+function selectText(id, focus) {
+  S.textSel = id;
+  showLTab('text'); renderTextUI(); timeline.render();
+  if (focus) { $('txtText').focus(); $('txtText').select(); }
+}
+function patchText(p, save = true) {
+  const L = curText(); if (!L) return;
+  Object.assign(L, p);
+  if (p.font && document.fonts) document.fonts.load(`700 40px '${p.font}'`, L.text || 'Aa').catch(() => {});
+  renderTextUI(); timeline.render();
+  if (save) commit();
+}
+function addText() {
+  const dur = mediaDur(), t = S.image ? 0 : video.currentTime || 0;
+  let start = t, end = S.image ? 1 : dur ? Math.min(dur, t + 3) : t + 3;
+  if (dur && end - start < 1) start = Math.max(0, end - 3);
+  const last = texts()[texts().length - 1];
+  const L = newLayer({ start: +start.toFixed(2), end: +end.toFixed(2), y: 0.22 + (texts().length % 5) * 0.12,
+    ...(last ? { font: last.font, color: last.color, bold: last.bold, stroke: last.stroke, strokeW: last.strokeW, bg: last.bg, bgOp: last.bgOp, size: last.size } : {}) });
+  S.o.texts = [...texts(), L];
+  if (!video.paused) video.pause();
+  commit();
+  selectText(L.id, true);
+}
+$('txtAdd').onclick = () => addText();
+$('txtText').addEventListener('input', e => patchText({ text: e.target.value }, false));
+$('txtText').addEventListener('change', () => commit());
+$('txtFont').onchange = e => patchText({ font: e.target.value });
+const tbind = (id, key, conv, label) => {
+  $(id).addEventListener('input', e => { patchText({ [key]: conv(e.target) }, false); });
+  $(id).addEventListener('change', () => commit());
+};
+tbind('txtSize', 'size', el => +el.value / 100);
+tbind('txtColor', 'color', el => el.value);
+tbind('txtStroke', 'stroke', el => el.value);
+tbind('txtStrokeW', 'strokeW', el => +el.value / 100);
+tbind('txtBg', 'bg', el => el.value);
+tbind('txtBgOp', 'bgOp', el => +el.value);
+$('txtStroke').addEventListener('input', () => { const L = curText(); if (L && !L.strokeW) patchText({ strokeW: 0.12 }, false); });
+$('txtBg').addEventListener('input', () => { const L = curText(); if (L && !L.bgOp) patchText({ bgOp: 70 }, false); });
+$('txtShadow').onchange = e => patchText({ shadow: e.target.checked });
+$('txtBold').onclick = () => { const L = curText(); L && patchText({ bold: !L.bold }); };
+$('txtItalic').onclick = () => { const L = curText(); L && patchText({ italic: !L.italic }); };
+$('txtAlign').addEventListener('click', e => { const b = e.target.closest('button'); if (b) patchText({ align: b.dataset.v }); });
+const txtTimeIn = which => () => {
+  const L = curText(); if (!L) return;
+  const v = parseT($(which === 'start' ? 'txtStart' : 'txtEnd').value), dur = mediaDur() || Infinity;
+  if (isNaN(v)) { renderTextUI(); return toast('Use a time like 0:03.25 or 3.25'); }
+  if (which === 'start') patchText({ start: Math.max(0, Math.min(v, dur - 0.2)), end: Math.max(L.end, Math.min(dur, v + 0.2)) });
+  else patchText({ end: Math.min(dur, Math.max(L.start + 0.2, v)) });
+};
+$('txtStart').onchange = txtTimeIn('start');
+$('txtEnd').onchange = txtTimeIn('end');
+$('txtHere').onclick = () => {
+  const L = curText(); if (!L) return;
+  const t = video.currentTime || 0, len = L.end - L.start, dur = mediaDur() || Infinity;
+  patchText({ start: +t.toFixed(2), end: +Math.min(dur, t + len).toFixed(2) });
+};
+$('txtWhole').onclick = () => { const dur = mediaDur(); if (dur) patchText({ start: 0, end: +dur.toFixed(2) }); };
+$('txtDup').onclick = () => {
+  const L = curText(); if (!L) return;
+  const c = newLayer({ ...L, id: undefined, y: Math.min(0.92, L.y + 0.1) });
+  c.id = Math.random().toString(36).slice(2, 9);
+  S.o.texts = [...texts(), c]; commit(); selectText(c.id);
+};
+$('txtDel').onclick = () => {
+  S.o.texts = texts().filter(l => l.id !== S.textSel); S.textSel = null;
+  commit(); renderTextUI(); timeline.render(); toast('Text deleted. Press Ctrl+Z to undo.');
+};
+/** Dashed box around the selected text in the preview (never in the export). */
+function drawTextSelection() {
+  const b = S.textBoxes.find(x => x.id === S.textSel);
+  if (!b) return;
+  const pad = b.px * 0.3;
+  ctx.save(); ctx.setLineDash([8, 6]); ctx.lineWidth = Math.max(2, canvas.width / 400); ctx.strokeStyle = '#a78bfa';
+  ctx.strokeRect(b.x0 - pad, b.y0 - pad * 0.6, b.w + pad * 2, b.h + pad * 1.2); ctx.restore();
+}
 
 // ---------- sound effects ----------
 /** Hand-placed sounds (with their index) plus the automatic one on every caption. */
@@ -374,7 +561,8 @@ function setSegments(next, keepSel = true) {
 function seekTo(t) { if (S.mode === 'file' && video.src) video.currentTime = Math.max(0, t + 0.01); }
 
 function renderSegs() {
-  $('timeline').hidden = !S.file || S.mode !== 'file';
+  $('timeline').hidden = !S.file || S.mode !== 'file' || !!S.image;
+  $('editor').classList.toggle('no-tl', $('timeline').hidden || !$('tlDock').contains($('timeline')));
   if (timeline && !$('timeline').hidden) timeline.render();
   const box = $('segs');
   box.innerHTML = '';
@@ -385,9 +573,9 @@ function renderSegs() {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
     const d = document.createElement('p');
-    d.textContent = genRunning ? 'Your captions are being made. They appear here as they’re ready.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? '' : 'Upload a video first.';
+    d.textContent = S.image ? 'This is a photo, so there’s nothing to caption. Use Text (left panel) to type on it.' : genRunning ? 'Your captions are being made. They appear here as they’re ready.' : S.mode === 'live' ? 'Start the camera and speak. Live captions appear here.' : S.file ? '' : 'Upload a video first.';
     if (d.textContent) p.appendChild(d);
-    if (S.file && !genRunning && S.mode === 'file') {
+    if (S.file && !S.image && !genRunning && S.mode === 'file') {
       // The one thing to do next, right where the captions will appear.
       const l = LANGUAGES[$('lang').value];
       const go = document.createElement('button');
@@ -503,7 +691,7 @@ function syncActions() {
   const has = S.segments.length > 0;
   $('srtBtn').disabled = !has || S.exporting;
   $('exportBtn').disabled = S.exporting || !(S.file && S.mode === 'file');
-  $('genBtn').disabled = !S.file || S.exporting || genRunning;
+  $('genBtn').disabled = !S.file || !!S.image || S.exporting || genRunning;
 }
 
 // ---------- file input ----------
@@ -514,7 +702,34 @@ function validateFile(file) {
   if (file.size > 2 * 1024 ** 3) return `That file is ${fmtBytes(file.size)}. The limit is 2 GB because everything runs inside your browser.`;
   return null;
 }
+const isImage = f => !!f && (/^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name));
+async function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  const ok = await new Promise(r => { img.onload = () => r(true); img.onerror = () => r(false); img.src = url; });
+  if (!ok || !img.naturalWidth) {
+    URL.revokeObjectURL(url);
+    toast('This browser can’t open that photo. iPhone HEIC photos: share them as JPG (Most Compatible) first.', 6500);
+    return false;
+  }
+  video.pause(); video.removeAttribute('src'); video.load();
+  if (S.fileURL) URL.revokeObjectURL(S.fileURL);
+  S.fileURL = url; S.file = file; S.image = img; S.wave = null; S.audioP = null;
+  S.segments = []; S.selected = -1;
+  document.body.classList.add('photo');
+  hist = []; hIdx = -1; commit();
+  fitCanvas(img.naturalWidth, img.naturalHeight);
+  $('drop').classList.add('hide');
+  $('playBtn').disabled = true; $('seek').disabled = true;
+  $('meta').textContent = `${file.name} · ${img.naturalWidth}×${img.naturalHeight} · photo · ${fmtBytes(file.size)}`;
+  $('time').textContent = 'Photo';
+  renderSegs(); syncActions(); refreshLookThumbs();
+  if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); }
+  status('Photo loaded. Type your text on the left, drag it on the photo, then press Export.');
+  return true;
+}
 async function loadFile(file) {
+  if (isImage(file)) return loadImage(file);
   const err = validateFile(file);
   if (err) { toast(err, 5000); return false; }
   const url = URL.createObjectURL(file);
@@ -545,6 +760,7 @@ async function loadFile(file) {
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.fileURL = url;
   S.file = file;
+  S.image = null; document.body.classList.remove('photo');
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
@@ -569,7 +785,8 @@ function fileMeta() {
 }
 function fitCanvas(w, h) {
   if (!(w >= 16 && h >= 16)) return;
-  const k = Math.min(1, 1920 / Math.max(w, h));
+  // The preview is shown a few hundred pixels tall: 1280 is sharp on retina and far lighter than 4K.
+  const k = Math.min(1, 1280 / Math.max(w, h));
   canvas.width = Math.round(w * k / 2) * 2;
   canvas.height = Math.round(h * k / 2) * 2;
 }
@@ -594,11 +811,26 @@ $('seek').oninput = e => { if (isFinite(video.duration)) video.currentTime = e.t
   let drag = null;
   canvas.addEventListener('pointerdown', e => {
     if (S.exporting || S.mode !== 'file') return;
-    drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false };
+    const r = canvas.getBoundingClientRect();
+    const id = hitLayer(S.textBoxes, (e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height);
+    if (id) {
+      const L = texts().find(l => l.id === id);
+      drag = { text: L, x0: e.clientX, y0: e.clientY, lx: L.x, ly: L.y, moved: false, w: r.width, h: r.height };
+      if (S.textSel !== id) selectText(id);
+    } else drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false };
     canvas.setPointerCapture(e.pointerId);
   });
+  canvas.addEventListener('dblclick', () => { if (curText()) { $('txtText').focus(); $('txtText').select(); } });
   canvas.addEventListener('pointermove', e => {
     if (!drag) return;
+    if (drag.text) {
+      const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      drag.moved = true; canvas.classList.add('dragging');
+      drag.text.x = Math.min(0.98, Math.max(0.02, drag.lx + dx / drag.w));
+      drag.text.y = Math.min(0.98, Math.max(0.02, drag.ly + dy / drag.h));
+      return;
+    }
     const dy = e.clientY - drag.y0;
     if (!drag.moved && Math.abs(dy) < 6) return;
     drag.moved = true;
@@ -610,7 +842,7 @@ $('seek').oninput = e => { if (isFinite(video.duration)) video.currentTime = e.t
   const end = () => {
     if (!drag) return;
     canvas.classList.remove('dragging');
-    if (drag.moved) commit(); else togglePlay();
+    if (drag.moved) commit(); else if (!drag.text) togglePlay();
     drag = null;
   };
   canvas.addEventListener('pointerup', end);
@@ -701,12 +933,13 @@ async function decodeBuffer(data, raw = false) {
 }
 async function decodeFull(file) {
   const data = await file.arrayBuffer();
+  // MP4/MOV: pull the AAC sound track out ourselves and decode only that. Handing a big (4K, 400 MB) video
+  // to the browser's audio decoder copies and parses the whole file and froze the editor.
+  try {
+    const { adts } = extractAacAdts(data);
+    return await decodeBuffer(adts.slice().buffer);
+  } catch { /* not MP4/AAC, or this browser can't decode it */ }
   try { return await decodeBuffer(data.slice(0)); } catch (err) {
-    // iPhone .mov in Safari: pull the AAC track out ourselves and decode it as plain AAC (instant).
-    try {
-      const { adts } = extractAacAdts(data);
-      return await decodeBuffer(adts.slice().buffer);
-    } catch { /* not AAC, or this browser can't decode it either */ }
     const patched = patchMovBrand(data);
     if (!patched) throw err;
     return decodeBuffer(patched);
@@ -1192,9 +1425,13 @@ const alphaMime = () => ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'].find(
 
 function openExportDialog() {
   if (S.exporting || !S.file) return;
+  if (S.image) return exportPhoto();
   const sizes = exportSizes();
   const sel = $('xRes'); sel.innerHTML = '';
-  sizes.forEach((o, i) => { const opt = document.createElement('option'); opt.value = i; opt.textContent = o.label; sel.appendChild(opt); });
+  sizes.forEach((o, i) => { const opt = document.createElement('option'); opt.value = i; opt.textContent = o.label + (i === 0 && sizes.length > 1 && Math.max(o.w, o.h) > 1920 ? ' (slow)' : ''); sel.appendChild(opt); });
+  // Instagram, YouTube Shorts and WhatsApp show at most 1080p, and 4K export is 4× slower: default to 1080p.
+  const hd = sizes.findIndex(o => Math.max(o.w, o.h) === 1920);
+  if (hd > 0) sel.value = hd;
   const hasAlpha = !!alphaMime();
   $('xKindAlpha').disabled = !hasAlpha;
   $('xAlphaNote').textContent = hasAlpha ? 'WebM with a real transparent background. Works in Premiere, DaVinci Resolve, After Effects and Final Cut (with a plug-in).'
@@ -1206,6 +1443,20 @@ function openExportDialog() {
   $('xDlg').showModal ? $('xDlg').showModal() : $('xDlg').setAttribute('open', '');
 }
 $('exportBtn').onclick = openExportDialog;
+async function exportPhoto() {
+  const img = S.image, k = Math.min(1, 4096 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  x.drawImage(graded(img, w, h), 0, 0, w, h);
+  drawLayers(x, w, h, texts(), 0, true);
+  const png = /png/i.test(S.file.type);
+  const blob = await new Promise(r => c.toBlob(r, png ? 'image/png' : 'image/jpeg', 0.95));
+  if (!blob) return toast('Couldn’t save the photo in this browser.');
+  const name = `${S.file.name.replace(/\.[^.]+$/, '')}-text.${png ? 'png' : 'jpg'}`;
+  download(blob, name);
+  status(`Saved “${name}” (${w}×${h}, ${fmtBytes(blob.size)}).`);
+}
 $('xClose').onclick = () => $('xDlg').close();
 $('xGo').onclick = e => {
   e.preventDefault();
@@ -1223,7 +1474,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
   if (!mimeType) return toast('This browser can’t record video. Try Chrome, Edge, Firefox or Safari.', 6000);
   const dur = video.duration;
   if (!isFinite(dur) || dur <= 0) return toast('Couldn’t read the video length, so it can’t be exported.');
-  if (!S.segments.length && !confirm(overlay ? 'There are no captions yet, so this file would be empty. Continue anyway?' : 'There are no captions yet. Export the video without captions?')) return;
+  if (!S.segments.length && !texts().length && !confirm(overlay ? 'There are no captions yet, so this file would be empty. Continue anyway?' : 'There are no captions yet. Export the video without captions?')) return;
   if (dur > 300 && !confirm(`This video is ${fmt(dur)} long. Export runs in real time, so it will take about ${fmt(dur)} and the tab must stay open. Continue?`)) return;
 
   size = size || exportSizes()[0];
@@ -1243,6 +1494,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
     else if (video.readyState >= 2 && video.videoWidth) xctx.drawImage(graded(video, size.w, size.h), 0, 0, size.w, size.h);
     else { xctx.fillStyle = '#0d0d16'; xctx.fillRect(0, 0, size.w, size.h); }
     drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, overlay ? { ...opts, fill: null } : opts);
+    drawLayers(xctx, size.w, size.h, texts(), t);
   };
   let stopClock = null;
   try {
@@ -1485,6 +1737,14 @@ function sampleChunks() {
 function drawFrame() {
   const W = canvas.width, H = canvas.height;
   const t0 = tpl(), opts = { scale: S.o.scale, pos: S.o.pos ?? undefined, fill: video };
+  if (S.mode === 'file' && S.image) {
+    const img = S.image;
+    if (Math.abs(W / H - img.naturalWidth / img.naturalHeight) > 0.01) fitCanvas(img.naturalWidth, img.naturalHeight);
+    ctx.drawImage(graded(img, canvas.width, canvas.height), 0, 0, canvas.width, canvas.height);
+    S.textBoxes = drawLayers(ctx, canvas.width, canvas.height, texts(), 0, true);
+    drawTextSelection();
+    return 0;
+  }
   if (S.mode === 'file') {
     if (S.exporting) return video.currentTime; // the export canvas does the work; the preview is covered
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -1503,6 +1763,8 @@ function drawFrame() {
     } else {
       drawCaption(ctx, canvas.width, canvas.height, findChunk(fileChunks(), t), t, t0, opts);
     }
+    S.textBoxes = drawLayers(ctx, canvas.width, canvas.height, texts(), t);
+    drawTextSelection();
     return t;
   }
   if (cam && video.readyState >= 2) {
@@ -1534,6 +1796,7 @@ document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.textSel && !$('timeline').contains(document.activeElement)) { e.preventDefault(); $('txtDel').click(); }
   else if (e.key === ' ' && !typing && document.activeElement.tagName !== 'BUTTON' && !$('editor').hidden) { e.preventDefault(); togglePlay(); }
 });
 
@@ -1689,6 +1952,7 @@ function startCaptions() {
 }
 /** A video was dropped into the editor: start captions straight away with the languages used last time. */
 function autoCaption() {
+  if (S.image) return;
   const saved = store.get();
   const sp = saved && spokenItems.find(x => x.lang.name === saved.spoken);
   if (!sp) { renderSegs(); return; } // no saved languages yet: the "Make captions" button is shown instead
@@ -1699,6 +1963,7 @@ function autoCaption() {
 
 async function startFile(file) {
   if (!file || genRunning) return;
+  if (isImage(file)) { if (await loadImage(file)) openEditor(); return; }
   if (!(await loadFile(file))) return;
   $('startVideo').src = S.fileURL;
   $('startDrop').hidden = true;
@@ -1734,6 +1999,7 @@ window.addEventListener('beforeunload', e => {
 window.addEventListener('pagehide', () => { if (S.fileURL) URL.revokeObjectURL(S.fileURL); });
 
 // ---------- boot ----------
+renderTextUI();
 syncControls();
 renderSegs();
 syncActions();
