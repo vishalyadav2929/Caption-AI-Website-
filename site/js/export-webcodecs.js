@@ -47,14 +47,15 @@ async function prepareAudio(file, decodePcm, mustEncode) {
  *   file         the original File
  *   canvas       the export canvas (size = output size)
  *   paint(t)     draws the frame at video time t, captions included, onto `canvas`
- *   dur          duration in seconds
+ *   dur          duration in seconds (of the part being exported)
+ *   start        where that part starts in the video (seconds), for shorts cut from a long video
  *   srcBps       source bitrate estimate (bits/s)
  *   job          { cancelled }
  *   onProgress(p, t)
  *   decodePcm()  → Promise<AudioBuffer|null>, used only when the file has no AAC track
  * @returns {Promise<Blob|null>} null when this browser can't do it (caller falls back to MediaRecorder)
  */
-export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps, job, onProgress, decodePcm, mixAudio = false }) {
+export async function exportWebCodecs({ video, file, canvas, paint, dur, start = 0, srcBps, job, onProgress, decodePcm, mixAudio = false }) {
   if (!canUseWebCodecs()) return null;
   const { width, height } = canvas;
   const fps = 30;
@@ -62,7 +63,8 @@ export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps,
   const bitrate = Math.round(Math.min(80e6, Math.max(srcBps * 1.5, width * height * fps * 0.15, 4e6)));
   const vconf = await pickVideoConfig(width, height, bitrate, fps);
   if (!vconf) return null;
-  const audio = await prepareAudio(file, decodePcm, mixAudio);
+  // A part of the video can't reuse the original sound frames as-is: re-encode it from PCM.
+  const audio = await prepareAudio(file, decodePcm, mixAudio || start > 0);
   if (!audio) return null;
 
   const vcodec = vconf.codec.startsWith('avc1') ? 'avc' : vconf.codec.startsWith('vp09') ? 'vp9' : 'av1';
@@ -103,14 +105,15 @@ export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps,
 
   // Video: play once and encode every decoded frame, stamped with its own media time.
   video.pause();
-  video.currentTime = 0;
+  video.currentTime = start;
   await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; });
+  const end = start + dur;
   const muted = video.muted;
   video.muted = true; // the sound is already in the file
   let last = -1, lastKey = -Infinity, frames = 0;
   const encodeAt = t => {
-    const ts = Math.round(t * 1e6);
-    if (ts <= last) return;
+    const ts = Math.round((t - start) * 1e6);
+    if (ts < 0 || ts <= last || t > end + 0.001) return;
     last = ts;
     paint(t);
     const frame = new VideoFrame(canvas, { timestamp: ts, duration: Math.round(1e6 / fps) });
@@ -136,8 +139,10 @@ export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps,
         video.playbackRate = rate;
       }
       lastPresented = meta.presentedFrames;
-      encodeAt(meta.mediaTime ?? video.currentTime);
-      onProgress && onProgress(Math.min(1, video.currentTime / dur), video.currentTime);
+      const mt = meta.mediaTime ?? video.currentTime;
+      if (mt >= end - 0.001) return finish();
+      encodeAt(mt);
+      onProgress && onProgress(Math.min(1, (mt - start) / dur), mt - start);
       // Don't let the encoder fall behind (slow phones): pause playback until it catches up.
       if (venc.encodeQueueSize > 6) {
         video.pause();
@@ -148,9 +153,13 @@ export async function exportWebCodecs({ video, file, canvas, paint, dur, srcBps,
     };
     if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(onFrame);
     else {
-      const timer = setInterval(() => { if (done) return clearInterval(timer); encodeAt(video.currentTime); onProgress && onProgress(video.currentTime / dur, video.currentTime); }, 1000 / fps);
+      const timer = setInterval(() => {
+        if (done) return clearInterval(timer);
+        if (video.currentTime >= end - 0.001) return finish();
+        encodeAt(video.currentTime); onProgress && onProgress((video.currentTime - start) / dur, video.currentTime - start);
+      }, 1000 / fps);
     }
-    encodeAt(0);
+    encodeAt(start);
     video.play().catch(reject);
   }).finally(() => { video.onended = null; video.pause(); video.muted = muted; video.playbackRate = 1; });
 

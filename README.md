@@ -19,6 +19,30 @@ There's no account or payment. Everything runs in the visitor's browser, except 
 | Translation | Hindi ↔ Hinglish on the device. Other languages (Hindi → Bangla, English → Hindi, …) use Chrome's on-device translator when present, otherwise the free MyMemory service (caption text only, no key, about 5,000 characters per day per visitor). The caption language is detected from the text's script. |
 | Live mode | Camera + browser speech recognition, with captions drawn live and recordable. |
 
+## Studio (app.html)
+
+| Area | What works |
+|---|---|
+| Home | Create project (drop video/photo), quick starts, **Projects** saved on this device (IndexedDB: media stored once, edit autosaved), reopen, delete. Tools not built yet are marked **Soon** and do nothing. |
+| Editor layout | Left tools (Media, Clips, Captions, Text, Audio, Styles, Filters, Adjust), preview in the middle, right details (Caption style, Text, Details), timeline across the bottom. Preview left/middle/right and panel sizes are saved. |
+| Timeline | Word, caption, text and sound rows, waveform, playhead, zoom, click to seek, double-click to edit a word, **Split** (caption at playhead), **Delete** (selected word/caption/text/sound), drag/resize text blocks. |
+| Text | Hand-typed text shown whole (not word by word): 27 fonts, size, bold/italic, alignment, colour, outline, box, shadow, drag on the video, timing. |
+| Photos | Open JPG/PNG, add text, download at full size. |
+| **Long video → Shorts** | Clips tab: from the captions, finds whole-sentence moments with a strong first line, lively speech, hook words and no dead air (`js/clips.js`, explainable "Why" for each). Pick length and count; each clip has editable hook text plus alternative hooks taken from what is said; preview, edit start/end, 9:16 / 1:1 / 16:9, frame position, hook on/off; export only that part. Scores are estimates, never a promise of views. |
+| AI hooks (optional) | With `GROQ_API_KEY` set, `netlify/functions/clips.mjs` re-ranks the clips and writes hooks with Llama 3.3 70B (caption text only). Without it, the on-device rules are used. |
+| Export | 1) **Fast** (Mediabunny): decode → draw captions/text/crop/colour → encode H.264 + AAC, no real-time playback, trims audio. Used when the browser can encode H.264 and there are no sound effects in range. 2) **WebCodecs real time** (H.264, AAC copied or encoded). 3) **MediaRecorder** fallback. Cancel works in all three. |
+
+## Third-party code
+
+| Package | Licence | Where | Why |
+|---|---|---|---|
+| [Mediabunny](https://github.com/Vanilagy/mediabunny) 1.61.1 | MPL-2.0 | `site/js/vendor/mediabunny.js` (unmodified minified bundle; licence in `mediabunny-LICENSE.txt`) | Fast export: demux MP4/MOV/WebM, WebCodecs decode/encode, trimming, MP4 mux. Loaded only when exporting. MPL-2.0 is file-level: our own files stay ours; changes to that file would have to be shared. |
+| mp4-muxer 5.2.2 | MIT | `site/js/vendor/mp4-muxer.js` | Real-time WebCodecs export path. |
+| fix-webm-duration | MIT | `site/js/vendor/fix-webm-duration.js` | Duration header for MediaRecorder WebM files. |
+| @huggingface/transformers 3.8.1 | Apache-2.0 | jsDelivr, on demand | On-device Whisper. |
+
+Reviewed and **not** merged: OpenReel (MIT; a React/TypeScript/WASM monorepo, so merging means a rewrite of this no-build site; used as a design reference), OpenShorts (MIT core, but its `cloud/` directory is under a separate commercial licence; its pipeline idea of a shortlist followed by an LLM pass is reimplemented here from scratch), ffmpeg.wasm (MIT wrapper; ~30 MB download and slower than WebCodecs; kept as a possible future fallback), faster-whisper (MIT; Python, needs a server/GPU worker, which Netlify Functions can't host).
+
 ## Technology choices
 
 - **Static HTML/CSS/vanilla JS, no build step.** It loads quickly and needs nothing on Netlify.
@@ -37,6 +61,11 @@ There's no account or payment. Everything runs in the visitor's browser, except 
 - **Output:** MP4 (H.264) in Chrome 126+, Edge and Safari; WebM in Firefox and in browsers without an H.264 encoder. Captions: SRT.
 
 ## Browser support and limits
+
+- Fast export needs WebCodecs with an H.264 encoder (Chrome/Edge 94+, Safari 16.4+). Elsewhere the real-time paths are used.
+- Shorts reframing is a manual frame-position slider; automatic face/speaker tracking is not built yet.
+- Clip finding needs captions first; a 30–60 minute video takes a long time to transcribe on-device (Fast mode is far quicker).
+- YouTube links are not supported: downloading YouTube videos breaks YouTube's terms. Upload your own file.
 
 - Desktop Chrome or Edge is the best experience (WebGPU makes transcription fast). Firefox and Safari work using the slower WebAssembly path.
 - Phones work, but `whisper-small` can run out of memory. Use Fast or Balanced there.
@@ -83,7 +112,7 @@ npm run test:asr       # real Whisper on a speech clip: accuracy, timing, progre
 
 **Custom domain (later):** **Domain management → Add a domain**, enter it, then either point your registrar's nameservers to Netlify DNS or add the CNAME/A records Netlify shows. HTTPS is issued automatically.
 
-No environment variables or API keys are needed for the site to work.
+No environment variables or API keys are needed for the site to work. `GROQ_API_KEY` (optional) switches on Fast mode captions **and** AI hooks for Shorts.
 
 ### Optional: Fast mode (instant, more accurate captions)
 

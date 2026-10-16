@@ -778,3 +778,36 @@ body.studio .tl-bar .tl-pos { margin-left: auto; }
 body.studio .props .ptab { font-size: 13px; white-space: nowrap; padding: 10px 6px; }
 .tool-tab span { font-size: 10px; letter-spacing: -.01em; white-space: nowrap; }
 @media (max-width: 640px) { #homeBtn .lbl { display: none; } }
+
+/* ----- Long video → Shorts ----- */
+.dash-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.dash-card.c5 { background: linear-gradient(135deg, #5b21b6, #be185d 120%); border-color: #7c3aed; }
+.dash-card.c5 span { color: #f5d0fe; }
+@media (max-width: 1200px) { .dash-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .dash-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dash-card.c5 { grid-column: span 2; } }
+.dash-tool.hot em { background: #be185d; color: #fff; }
+.clip-opts { margin-top: 4px; }
+.clip-find { width: 100%; }
+.clip-note { font-size: 12.5px; color: var(--muted); margin: 8px 0; }
+.clip-note:empty { display: none; }
+.clip-list { display: grid; gap: 10px; }
+.clip-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--card); display: grid; gap: 6px; }
+.clip-card.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(139,92,246,.25); }
+.clip-top { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.clip-score { min-width: 34px; height: 26px; border-radius: 8px; background: var(--grad); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 13px; }
+.clip-title { width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); font-weight: 700; font-size: 14px; }
+.clip-text { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.clip-card small { font-size: 11.5px; color: #8b8ba0; }
+.clip-card .row .btn { flex: 1; }
+.clip-active { border: 1px solid var(--accent); border-radius: 12px; padding: 10px; margin-bottom: 12px; background: rgba(139,92,246,.10); display: grid; gap: 8px; font-size: 13px; }
+.clip-active span { color: var(--muted); }
+.clip-active .field { margin: 0; }
+.tl-clip { position: absolute; top: 18px; bottom: 0; background: rgba(139,92,246,.16); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); pointer-events: none; z-index: 1; }
+.tool-tab { flex: 0 0 auto; min-width: 46px; padding: 7px 4px 6px; }
+.tool-tabs { scroll-snap-type: x proximity; }
+.clip-hooks { display: flex; flex-wrap: wrap; gap: 5px; }
+.clip-hooks:empty { display: none; }
+.chip { border: 1px solid var(--line); background: #12121a; color: var(--text); border-radius: 999px; padding: 4px 9px; font-size: 11.5px; cursor: pointer; text-align: left; }
+.chip:hover { border-color: var(--accent); }
+.clip-times label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+.clip-times .t-in { width: 84px; }

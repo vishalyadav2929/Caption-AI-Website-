@@ -6,10 +6,12 @@ import { mountGallery } from './gallery.js';
 import * as C from './captions.js';
 import { extractAacAdts } from './mp4audio.js';
 import { exportWebCodecs } from './export-webcodecs.js';
+import { exportFast } from './export-fast.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
 import { mountTimeline, wavePeaks } from './timeline.js';
 import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
 import { TEXT_FONTS, newLayer, drawLayers, hitLayer } from './text-layers.js';
+import { findClips, cropRect, ASPECTS, aspectSize } from './clips.js';
 import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
@@ -97,7 +99,7 @@ function tpl() {
 }
 const wordsPerCaption = () => S.o.words || baseTpl().words;
 // What survives a template change or "Reset to template": everything that isn't caption styling.
-const keepO = () => ({ scale: S.o.scale || 1, sfx: S.o.sfx, sfxAuto: S.o.sfxAuto, grade: S.o.grade, texts: S.o.texts });
+const keepO = () => ({ scale: S.o.scale || 1, sfx: S.o.sfx, sfxAuto: S.o.sfxAuto, grade: S.o.grade, texts: S.o.texts, clip: S.o.clip, found: S.o.found });
 
 // ---------- undo / redo ----------
 let hist = [], hIdx = -1;
@@ -117,7 +119,7 @@ function restore(s) {
   S.segments = d.segments; S.o = d.o; S.tplId = d.tplId; S.hinglish = d.hinglish;
   gallery.select(S.tplId);
   if (S.textSel && !texts().some(l => l.id === S.textSel)) S.textSel = null;
-  syncControls(); renderSegs(); syncActions(); renderTextUI();
+  syncControls(); renderSegs(); syncActions(); renderTextUI(); renderClipUI();
 }
 function undo() { if (hIdx > 0 && !S.exporting) { hIdx--; restore(hist[hIdx]); syncUndo(); } }
 function redo() { if (hIdx < hist.length - 1 && !S.exporting) { hIdx++; restore(hist[hIdx]); syncUndo(); } }
@@ -269,7 +271,7 @@ $('words').addEventListener('change', e => {
 $('hinglish').onchange = e => { S.hinglish = e.target.checked; renderSegs(); commit(); };
 
 // Left: tools (what to add). Right: details of what's selected. On phones the styles sit under the video.
-const LTABS = [['ltabMedia', 'paneMedia', 'media'], ['tabCaptions', 'paneCaptions', 'captions'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd'],
+const LTABS = [['ltabMedia', 'paneMedia', 'media'], ['ltabClips', 'paneClips', 'clips'], ['tabCaptions', 'paneCaptions', 'captions'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd'],
   ['ltabTpl', 'paneTpl', 'tpl'], ['tabColor', 'paneColor', 'color'], ['ltabAdj', 'paneAdjust', 'adjust']];
 function showLTab(which) {
   if (which === 'tpl' && matchMedia('(max-width: 1100px)').matches) which = 'captions';
@@ -396,6 +398,7 @@ var timeline = mountTimeline($('timeline'), {
   soundsHost: $('paneSnd'),
   openSounds: () => { showLTab('snd'); if (matchMedia('(max-width: 1100px)').matches) $('paneSnd').scrollIntoView({ block: 'start', behavior: 'smooth' }); return true; },
   addText: () => addText(),
+  clip: () => S.o.clip || null,
   splitAt: t => {
     const i = C.indexAt(S.segments, t), seg = S.segments[i];
     const at = seg ? seg.words.filter(w => w.start < t).length : 0;
@@ -778,7 +781,7 @@ async function loadFile(file) {
   S.fileURL = url;
   S.file = file;
   S.image = null; document.body.classList.remove('photo');
-  if (!opening) S.projectId = null;
+  if (!opening) { S.projectId = null; S.o.clip = null; S.o.found = null; }
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
@@ -792,8 +795,8 @@ async function loadFile(file) {
   const meta = fileMeta();
   $('meta').textContent = meta;
   status(`Loaded “${file.name}”.`);
-  renderMedia();
-  showLTab('captions');
+  renderMedia(); renderClipUI();
+  showLTab(S.wantClips ? 'clips' : 'captions');
   if (!opening) createProject(file, 'video');
   if (video.duration > 600) toast('Long video: transcription and export both take a while. Under 3 minutes works best.', 6000);
   renderSegs(); syncActions();
@@ -826,7 +829,11 @@ function togglePlay() { if (!video.src || S.exporting || S.mode !== 'file') retu
 $('playBtn').onclick = togglePlay;
 video.onplay = () => { $('playBtn').textContent = '❚❚ Pause'; $('playBtn').setAttribute('aria-label', 'Pause'); };
 video.onpause = () => { $('playBtn').textContent = '▶ Play'; $('playBtn').setAttribute('aria-label', 'Play'); };
-$('seek').oninput = e => { if (isFinite(video.duration)) video.currentTime = e.target.value / 1000 * video.duration; };
+$('seek').oninput = e => {
+  if (!isFinite(video.duration)) return;
+  const c = S.o.clip;
+  video.currentTime = c ? c.start + e.target.value / 1000 * (c.end - c.start) : e.target.value / 1000 * video.duration;
+};
 // Drag captions up/down on the video; a tap without dragging plays/pauses.
 {
   let drag = null;
@@ -1206,6 +1213,7 @@ async function runGeneration({ lang, mode, quality }) {
       toast(`The speech model wrote English. Converting to ${want.name.split(' — ')[0]}… For exact words, use “Best for Hindi” quality.`, 7000);
       await translateTo(want);
     }
+    if (S.wantClips && S.segments.length) { S.wantClips = false; showLTab('clips'); findAndShowClips(); }
   } catch (err) {
     if (err.message === 'needs-tap') {
       // iPhone needs a fresh tap before it will play the video to read its sound.
@@ -1432,7 +1440,7 @@ const xctxOpaque = xcanvasOpaque.getContext('2d', { alpha: false });
 const xctxAlpha = xcanvasAlpha.getContext('2d', { alpha: true });
 
 function exportSizes() {
-  const vw = video.videoWidth || 1080, vh = video.videoHeight || 1920;
+  const r = srcRect(), vw = r.sw || 1080, vh = r.sh || 1920;
   const long = Math.max(vw, vh), out = [];
   const add = (label, l) => {
     const k = Math.min(1, l / long);
@@ -1440,6 +1448,11 @@ function exportSizes() {
     if (!out.some(o => o.w === w)) out.push({ label: `${label} · ${w}×${h}`, w, h });
   };
   add('Original', long); add('1080p', 1920); add('720p', 1280);
+  // A short cut from a 1080p video is only 608×1080: offer the full Shorts size too.
+  if (S.o.clip) {
+    const z = aspectSize(S.o.clip.aspect);
+    if (!out.some(o => o.w === z.w && o.h === z.h)) out.push({ label: `${S.o.clip.aspect || '9:16'} · ${z.w}×${z.h}`, w: z.w, h: z.h });
+  }
   return out;
 }
 const alphaMime = () => ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
@@ -1451,7 +1464,8 @@ function openExportDialog() {
   const sel = $('xRes'); sel.innerHTML = '';
   sizes.forEach((o, i) => { const opt = document.createElement('option'); opt.value = i; opt.textContent = o.label + (i === 0 && sizes.length > 1 && Math.max(o.w, o.h) > 1920 ? ' (slow)' : ''); sel.appendChild(opt); });
   // Instagram, YouTube Shorts and WhatsApp show at most 1080p, and 4K export is 4× slower: default to 1080p.
-  const hd = sizes.findIndex(o => Math.max(o.w, o.h) === 1920);
+  const z = S.o.clip && aspectSize(S.o.clip.aspect);
+  const hd = z ? sizes.findIndex(o => o.w === z.w && o.h === z.h) : sizes.findIndex(o => Math.max(o.w, o.h) === 1920);
   if (hd > 0) sel.value = hd;
   const hasAlpha = !!alphaMime();
   $('xKindAlpha').disabled = !hasAlpha;
@@ -1493,7 +1507,9 @@ async function exportVideo({ kind = 'video', size } = {}) {
   const overlay = kind !== 'video';
   const mimeType = kind === 'alpha' ? alphaMime() : pickMime();
   if (!mimeType) return toast('This browser can’t record video. Try Chrome, Edge, Firefox or Safari.', 6000);
-  const dur = video.duration;
+  // A short: only its part of the video. Otherwise the whole thing.
+  const range = S.o.clip ? { start: S.o.clip.start, end: Math.min(S.o.clip.end, video.duration) } : { start: 0, end: video.duration };
+  const dur = range.end - range.start;
   if (!isFinite(dur) || dur <= 0) return toast('Couldn’t read the video length, so it can’t be exported.');
   if (!S.segments.length && !texts().length && !confirm(overlay ? 'There are no captions yet, so this file would be empty. Continue anyway?' : 'There are no captions yet. Export the video without captions?')) return;
   if (dur > 300 && !confirm(`This video is ${fmt(dur)} long. Export runs in real time, so it will take about ${fmt(dur)} and the tab must stay open. Continue?`)) return;
@@ -1512,26 +1528,55 @@ async function exportVideo({ kind = 'video', size } = {}) {
   const paint = t => {
     if (kind === 'alpha') xctx.clearRect(0, 0, size.w, size.h);
     else if (kind === 'green') { xctx.fillStyle = '#00FF00'; xctx.fillRect(0, 0, size.w, size.h); }
-    else if (video.readyState >= 2 && video.videoWidth) xctx.drawImage(graded(video, size.w, size.h), 0, 0, size.w, size.h);
+    else if (video.readyState >= 2 && video.videoWidth) drawVideo(xctx, size.w, size.h);
     else { xctx.fillStyle = '#0d0d16'; xctx.fillRect(0, 0, size.w, size.h); }
     drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, overlay ? { ...opts, fill: null } : opts);
     drawLayers(xctx, size.w, size.h, texts(), t);
   };
   let stopClock = null;
   try {
-    const srcBps = S.file.size * 8 / dur;
+    const srcBps = S.file.size * 8 / video.duration;
     // Best quality first: WebCodecs (H.264 at ≥ source bitrate, original audio copied as-is).
+    // Fastest first: decode → draw → encode without real-time playback (H.264 MP4). Sound effects need the
+    // real-time mix below, so they skip this path for now.
+    if (kind === 'video' && !window.__vczNoFast && !allSounds().some(f => f.t >= range.start && f.t < range.end)) {
+      S.exportVia = 'fast';
+      const bitrate = Math.round(Math.min(80e6, Math.max(srcBps * 1.5, size.w * size.h * 30 * 0.15, 4e6)));
+      const t0x = performance.now();
+      const fast = await exportFast({
+        file: S.file, width: size.w, height: size.h, start: range.start, end: range.end, canvas: xcanvas, bitrate, job,
+        draw: (src, t, w, h) => {
+          drawVideo(xctx, size.w, size.h, src, w, h);
+          drawCaption(xctx, size.w, size.h, findChunk(fileChunks(), t), t, t0, opts);
+          drawLayers(xctx, size.w, size.h, texts(), t);
+        },
+        onProgress: (p, t) => {
+          $('exportBar').style.width = `${(p * 100).toFixed(1)}%`;
+          $('exportText').textContent = `${Math.round(p * 100)}% · ${fmt(t)} of ${fmt(dur)} · ${size.w}×${size.h} · fast MP4`;
+        },
+      }).catch(err => { console.warn('Fast export failed, trying the real-time path', err); return null; });
+      if (fast === 'cancelled' || job.cancelled) { status('Export cancelled.'); return; }
+      if (fast) {
+        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${S.o.clip ? `short-${Math.round(range.start)}s` : 'captioned'}.mp4`;
+        download(fast, name);
+        const secs = (performance.now() - t0x) / 1000;
+        status(`Exported “${name}” (${fmtBytes(fast.size)}, ${size.w}×${size.h}) in ${secs.toFixed(1)} s.`);
+        window.__vczLastExport = 'fast';
+        return;
+      }
+    }
     if (kind === 'video' && !window.__vczNoWebCodecs) {
-      const sounds = allSounds();
+      const sounds = allSounds().filter(f => f.t >= range.start && f.t < range.end).map(f => ({ ...f, t: f.t - range.start }));
       S.exportVia = 'webcodecs';
       const wc = await exportWebCodecs({
-        video, file: S.file, canvas: xcanvas, paint, dur, srcBps, job, mixAudio: sounds.length > 0,
+        video, file: S.file, canvas: xcanvas, paint, dur, start: range.start, srcBps, job, mixAudio: sounds.length > 0 || !!S.o.clip,
         decodePcm: async () => {
           let raw = null;
           const data = await S.file.arrayBuffer();
           try { raw = await decodeBuffer(data.slice(0), true); } catch {
             try { raw = await decodeBuffer(extractAacAdts(data).adts.slice().buffer, true); } catch { /* no decodable sound */ }
           }
+          if (raw && S.o.clip) raw = sliceBuffer(raw, range.start, range.end);
           return sounds.length ? mixWithSfx(raw, dur, sounds, raw ? raw.sampleRate : 48000) : raw;
         },
         onProgress: (p, t) => {
@@ -1541,7 +1586,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
       }).catch(err => { console.warn('WebCodecs export failed, using MediaRecorder', err); return null; });
       if (wc === 'cancelled' || job.cancelled) { status('Export cancelled.'); return; }
       if (wc) {
-        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-captioned.mp4`;
+        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${S.o.clip ? `short-${Math.round(range.start)}s` : 'captioned'}.mp4`;
         download(wc, name);
         status(`Exported “${name}” (${fmtBytes(wc.size)}, ${size.w}×${size.h}, original audio kept).`);
         window.__vczLastExport = 'webcodecs';
@@ -1563,7 +1608,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
       speakerGain.gain.value = 0; // silent while exporting; the audio still goes into the file
       audioDest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
       video.pause();
-      video.currentTime = 0;
+      video.currentTime = range.start;
       await new Promise(r => { video.onseeked = () => { video.onseeked = null; r(); }; });
     }
     const rec = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: vbr, ...(overlay ? {} : { audioBitsPerSecond: 192000 }) });
@@ -1579,20 +1624,20 @@ async function exportVideo({ kind = 'video', size } = {}) {
       const start = performance.now();
       clock = () => (performance.now() - start) / 1000;
       paint(0);
-      const timer = setInterval(() => { const t = clock(); paint(Math.min(t, dur)); if (t >= dur) job.finish(); }, 1000 / 30);
+      const timer = setInterval(() => { const t = clock(); paint(range.start + Math.min(t, dur)); if (t >= dur) job.finish(); }, 1000 / 30);
       stopClock = () => clearInterval(timer);
       rec.start(1000);
     } else {
-      clock = () => video.currentTime;
+      clock = () => video.currentTime - range.start;
       video.onended = () => job.finish();
       if (useRVFC) {
-        const step = () => { if (S.exporting) { paint(video.currentTime); video.requestVideoFrameCallback(step); } };
+        const step = () => { if (S.exporting) { if (video.currentTime >= range.end) return job.finish(); paint(video.currentTime); video.requestVideoFrameCallback(step); } };
         video.requestVideoFrameCallback(step);
       } else {
-        const timer = setInterval(() => paint(video.currentTime), 1000 / 30);
+        const timer = setInterval(() => { if (video.currentTime >= range.end) job.finish(); paint(video.currentTime); }, 1000 / 30);
         stopClock = () => clearInterval(timer);
       }
-      paint(0);
+      paint(range.start);
       rec.start(1000);
       await video.play();
     }
@@ -1618,7 +1663,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
       $('exportText').textContent = 'Finishing file…';
       blob = await window.ysFixWebmDuration(blob, dur * 1000, { logger: false });
     }
-    const suffix = kind === 'video' ? 'captioned' : kind === 'alpha' ? 'captions-transparent' : 'captions-greenscreen';
+    const suffix = S.o.clip ? `short-${Math.round(range.start)}s` : kind === 'video' ? 'captioned' : kind === 'alpha' ? 'captions-transparent' : 'captions-greenscreen';
     const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${suffix}.${ext}`;
     download(blob, name);
     status(`Exported “${name}” (${fmtBytes(blob.size)}, ${size.w}×${size.h}).` +
@@ -1631,10 +1676,10 @@ async function exportVideo({ kind = 'video', size } = {}) {
     if (speakerGain) speakerGain.gain.value = 1;
     exportJob = null;
     setExportUI(false);
-    video.currentTime = 0;
+    video.currentTime = S.o.clip ? S.o.clip.start : 0;
   }
 }
-$('exportCancel').onclick = () => { if (exportJob) { exportJob.cancelled = true; exportJob.finish && exportJob.finish(); } };
+$('exportCancel').onclick = () => { if (exportJob) { exportJob.cancelled = true; exportJob.cancel && exportJob.cancel(); exportJob.finish && exportJob.finish(); } };
 
 // ---------- translation ----------
 // Chrome (desktop, 138+) has a free on-device translator. Every other browser (iPhone Safari, Android,
@@ -1769,8 +1814,9 @@ function drawFrame() {
   if (S.mode === 'file') {
     if (S.exporting) return video.currentTime; // the export canvas does the work; the preview is covered
     const vw = video.videoWidth, vh = video.videoHeight;
-    if (vw && Math.abs(W / H - vw / vh) > 0.01) fitCanvas(vw, vh);
-    if (video.readyState >= 2 && vw) ctx.drawImage(graded(video, canvas.width, canvas.height), 0, 0, canvas.width, canvas.height); else drawPlaceholder();
+    const r = srcRect();
+    if (vw && Math.abs(W / H - r.sw / r.sh) > 0.01) fitCanvas(r.sw, r.sh);
+    if (video.readyState >= 2 && vw) drawVideo(ctx, canvas.width, canvas.height); else drawPlaceholder();
     const t = video.currentTime;
     if (!S.segments.length && S.file) {
       const st = (performance.now() / 1000) % 4.2;
@@ -1803,8 +1849,16 @@ function drawFrame() {
 function loop() {
   const t = drawFrame();
   if (S.mode === 'file' && isFinite(video.duration) && video.duration) {
-    $('time').textContent = `${fmt(t)} / ${fmt(video.duration)}`;
-    if (!S.exporting && document.activeElement !== $('seek')) $('seek').value = Math.round(t / video.duration * 1000);
+    const c = S.o.clip;
+    if (c && !S.exporting) {
+      // A short plays only its own part, on a loop.
+      if (!video.paused && t >= c.end - 0.03) { video.pause(); video.currentTime = c.start; }
+      $('time').textContent = `${fmt(Math.max(0, t - c.start))} / ${fmt(c.end - c.start)}`;
+      if (document.activeElement !== $('seek')) $('seek').value = Math.round(Math.max(0, t - c.start) / (c.end - c.start) * 1000);
+    } else {
+      $('time').textContent = `${fmt(t)} / ${fmt(video.duration)}`;
+      if (!S.exporting && document.activeElement !== $('seek')) $('seek').value = Math.round(t / video.duration * 1000);
+    }
     highlightSeg(t);
     timeline && !$('timeline').hidden && timeline.tick(t);
     fireSounds(t);
@@ -1820,6 +1874,164 @@ document.addEventListener('keydown', e => {
   else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && S.textSel && !$('timeline').contains(document.activeElement)) { e.preventDefault(); $('txtDel').click(); }
   else if (e.key === ' ' && !typing && document.activeElement.tagName !== 'BUTTON' && !$('editor').hidden) { e.preventDefault(); togglePlay(); }
 });
+
+// ---------- long video → shorts ----------
+const srcRect = (vw = video.videoWidth, vh = video.videoHeight) => (S.o.clip && vw ? cropRect(vw, vh, ASPECTS[S.o.clip.aspect] || 9 / 16, S.o.clip.x ?? 0.5) : { sx: 0, sy: 0, sw: vw, sh: vh });
+/** Draw a video frame (graded, and cropped to 9:16 for a short) to fill W×H. src: the <video> or a decoded frame. */
+function drawVideo(c2, W, H, src = video, vw = video.videoWidth, vh = video.videoHeight) {
+  if (!S.o.clip) { c2.drawImage(graded(src, W, H), 0, 0, W, H); return; }
+  const r = srcRect(vw, vh), k = W / r.sw;
+  const g = graded(src, Math.round(vw * k), Math.round(vh * k));
+  if (g === src) c2.drawImage(src, r.sx, r.sy, r.sw, r.sh, 0, 0, W, H);
+  else c2.drawImage(g, r.sx * k, r.sy * k, r.sw * k, r.sh * k, 0, 0, W, H);
+}
+function sliceBuffer(buf, from, to) {
+  const sr = buf.sampleRate, a = Math.max(0, Math.floor(from * sr)), b = Math.min(buf.length, Math.ceil(to * sr));
+  const out = new AudioBuffer({ length: Math.max(1, b - a), numberOfChannels: buf.numberOfChannels, sampleRate: sr });
+  for (let c = 0; c < buf.numberOfChannels; c++) out.copyToChannel(buf.getChannelData(c).subarray(a, b), c);
+  return out;
+}
+/** How loud a stretch is compared with the whole video (0..1), from the waveform. */
+function loudness(from, to) {
+  const w = S.wave; if (!w || !w.length) return 0.5;
+  const step = 0.02, a = Math.floor(from / step), b = Math.min(w.length, Math.ceil(to / step));
+  let sum = 0, all = 0;
+  for (let i = a; i < b; i++) sum += w[i];
+  for (let i = 0; i < w.length; i++) all += w[i];
+  const m = sum / Math.max(1, b - a), g = all / w.length || 1;
+  return Math.max(0, Math.min(1, m / g / 2));
+}
+video.addEventListener('play', () => {
+  const c = S.o.clip;
+  if (c && !S.exporting && (video.currentTime < c.start - 0.05 || video.currentTime >= c.end - 0.05)) video.currentTime = c.start;
+});
+async function findAndShowClips() {
+  if (S.image) return toast('Shorts need a video, not a photo.');
+  if (!S.file) return toast('Upload a long video first.');
+  if (!S.segments.length) {
+    if (genRunning) { S.wantClips = true; return toast('Captions are being made. Clips appear right after.'); }
+    S.wantClips = true;
+    toast('Making captions first (clips are picked from what is said)…', 5000);
+    showLTab('captions');
+    return startCaptions();
+  }
+  const [a, b] = $('clipLen').value.split('-').map(Number);
+  let clips = findClips(S.segments, { minLen: a, maxLen: b, ideal: (a + b) / 2, count: +$('clipCount').value, energy: loudness });
+  let ai = false;
+  if (clips.length && await aiHooksOn()) {
+    $('clipFind').disabled = true; $('clipNote').textContent = 'Writing hooks with AI…';
+    try { const r = await aiHooks(clips); if (r) { clips = r; ai = true; } } finally { $('clipFind').disabled = false; }
+  }
+  S.o.found = clips;
+  commit();
+  renderClipUI();
+  $('clipNote').textContent = clips.length
+    ? `${clips.length} clip${clips.length > 1 ? 's' : ''} found${ai ? ', hooks written by AI' : ''}. Best first. Edit the hook, preview, then export each one.`
+    : `No clips found: this video needs at least ${a} seconds of continuous speech. Try a shorter length.`;
+}
+// AI hooks (only when the site owner has switched them on; sends caption text, never media).
+let aiHooksP = null;
+const aiHooksOn = () => (window.__vczNoCloud ? Promise.resolve(false) : aiHooksP || (aiHooksP = fetch('api/clips', { cache: 'no-store' }).then(r => (r.ok ? r.json() : {})).then(j => !!j.enabled).catch(() => false)));
+async function aiHooks(clips) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch('api/clips', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal, body: JSON.stringify({ clips: clips.map(c => ({ start: c.start, end: c.end, text: c.text })) }) });
+    if (!r.ok) return null;
+    const { clips: rated } = await r.json();
+    if (!rated || !rated.length) return null;
+    const out = clips.map(c => ({ ...c }));
+    for (const x of rated) Object.assign(out[x.i], { score: x.score, title: x.hook || out[x.i].title, why: [x.why || 'AI pick', ...(out[x.i].why || [])].filter(Boolean).slice(0, 3), ai: true });
+    return out.sort((p, q) => q.score - p.score);
+  } catch { return null; } finally { clearTimeout(timer); }
+}
+function applyClip(i) {
+  const c = (S.o.found || [])[i];
+  if (!c || S.exporting) return;
+  const others = texts().filter(l => !l.hook);
+  const prev = S.o.clip || {};
+  const hook = c.title && prev.hook !== false ? [newLayer({ text: c.title, start: c.start, end: Math.min(c.end, c.start + 3.5), x: 0.5, y: 0.18, size: 0.072, font: 'Montserrat', bold: true, color: '#ffffff', stroke: '#000000', strokeW: 0.16, shadow: true, hook: true })] : [];
+  S.o.clip = { start: c.start, end: c.end, x: prev.x ?? 0.5, aspect: prev.aspect || '9:16', hook: prev.hook !== false, i };
+  S.o.texts = [...others, ...hook];
+  commit();
+  renderClipUI(); renderTextUI(); timeline.renderNow(); timeline.scrollTo(c.start);
+  video.currentTime = c.start + 0.01;
+}
+function exitClip() {
+  if (!S.o.clip || S.exporting) return;
+  S.o.clip = null;
+  S.o.texts = texts().filter(l => !l.hook);
+  commit();
+  renderClipUI(); renderTextUI(); timeline.render();
+}
+function renderClipUI() {
+  const c = S.o.clip;
+  $('clipActive').hidden = !c;
+  if (c) {
+    $('clipRange').textContent = `${fmt(c.start)}–${fmt(c.end)} · ${Math.round(c.end - c.start)} s`;
+    $('clipX').value = Math.round((c.x ?? 0.5) * 100); $('clipXVal').textContent = `${$('clipX').value}%`;
+    $('clipAspect').value = c.aspect || '9:16'; $('clipHook').checked = c.hook !== false;
+    if (document.activeElement !== $('clipStart')) $('clipStart').value = fmtT(c.start);
+    if (document.activeElement !== $('clipEnd')) $('clipEnd').value = fmtT(c.end);
+  }
+  const list = $('clipList');
+  list.innerHTML = '';
+  (S.o.found || []).forEach((f, i) => {
+    const card = document.createElement('div');
+    card.className = 'clip-card' + (c && c.i === i ? ' on' : '');
+    const top = document.createElement('div'); top.className = 'clip-top';
+    const sc = document.createElement('span'); sc.className = 'clip-score'; sc.textContent = f.score; sc.title = 'How likely this moment is to hold viewers (estimate)';
+    const tm = document.createElement('b'); tm.textContent = `${fmt(f.start)}–${fmt(f.end)} · ${Math.round(f.end - f.start)} s`;
+    top.append(sc, tm);
+    const title = document.createElement('input'); title.className = 'clip-title'; title.value = f.title; title.setAttribute('aria-label', `Hook title for clip ${i + 1}`);
+    title.onchange = () => {
+      f.title = title.value.trim();
+      if (c && c.i === i) { const h = texts().find(l => l.hook); if (h) h.text = f.title; else return applyClip(i); renderTextUI(); timeline.render(); }
+      commit();
+    };
+    const chips = document.createElement('div'); chips.className = 'clip-hooks';
+    (f.hooks || []).filter(h => h !== f.title).forEach(h => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = h; b.title = 'Use this hook';
+      b.onclick = () => { title.value = h; title.onchange(); renderClipUI(); };
+      chips.appendChild(b);
+    });
+    const tx = document.createElement('p'); tx.className = 'clip-text'; tx.textContent = f.text.length > 170 ? `${f.text.slice(0, 170)}…` : f.text;
+    const why = document.createElement('small'); why.textContent = f.why && f.why.length ? `Why: ${f.why.join(' · ')}` : '';
+    const row = document.createElement('div'); row.className = 'row';
+    const pv = document.createElement('button'); pv.type = 'button'; pv.className = 'btn btn-sm'; pv.textContent = '▶ Preview';
+    pv.onclick = () => { applyClip(i); video.play().catch(() => {}); };
+    const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'btn btn-sm btn-primary'; ed.textContent = c && c.i === i ? 'Editing' : 'Use this short';
+    ed.onclick = () => applyClip(i);
+    row.append(pv, ed);
+    card.append(top, title, chips, tx, why, row);
+    list.appendChild(card);
+  });
+}
+$('clipFind').onclick = () => findAndShowClips();
+$('clipExit').onclick = () => exitClip();
+$('clipExport').onclick = () => openExportDialog();
+$('clipX').addEventListener('input', e => { if (S.o.clip) { S.o.clip.x = e.target.value / 100; $('clipXVal').textContent = `${e.target.value}%`; } });
+$('clipX').addEventListener('change', () => commit());
+$('clipAspect').onchange = e => { if (S.o.clip) { S.o.clip.aspect = e.target.value; commit(); renderClipUI(); } };
+$('clipHook').onchange = e => {
+  const c = S.o.clip; if (!c) return;
+  c.hook = e.target.checked;
+  const f = (S.o.found || [])[c.i];
+  S.o.texts = texts().filter(l => !l.hook);
+  if (c.hook && f && f.title) S.o.texts.push(newLayer({ text: f.title, start: c.start, end: Math.min(c.end, c.start + 3.5), x: 0.5, y: 0.18, size: 0.072, font: 'Montserrat', bold: true, color: '#ffffff', stroke: '#000000', strokeW: 0.16, shadow: true, hook: true }));
+  commit(); renderTextUI(); timeline.render();
+};
+const clipTime = which => () => {
+  const c = S.o.clip; if (!c) return;
+  const v = parseT($(which === 'start' ? 'clipStart' : 'clipEnd').value), D = video.duration || 0;
+  if (isNaN(v)) { renderClipUI(); return toast('Use a time like 1:05.20 or 65.2'); }
+  if (which === 'start') c.start = Math.max(0, Math.min(v, c.end - 1)); else c.end = Math.min(D, Math.max(v, c.start + 1));
+  const f = (S.o.found || [])[c.i]; if (f) { f.start = c.start; f.end = c.end; }
+  const h = texts().find(l => l.hook); if (h) { h.start = c.start; h.end = Math.min(c.end, c.start + 3.5); }
+  commit(); renderClipUI(); timeline.render(); video.currentTime = c.start + 0.01;
+};
+$('clipStart').onchange = clipTime('start');
+$('clipEnd').onchange = clipTime('end');
+['cardClips', 'toolClips', 'navClips'].forEach(id => $(id).addEventListener('click', () => { S.wantClips = true; }));
 
 // ---------- projects (saved on this device) ----------
 S.projectId = null;
@@ -2135,6 +2347,7 @@ window.addEventListener('pagehide', () => { if (S.fileURL) URL.revokeObjectURL(S
 
 // ---------- boot ----------
 renderTextUI();
+renderClipUI();
 renderProjects();
 syncControls();
 renderSegs();

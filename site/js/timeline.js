@@ -28,6 +28,7 @@ export function mountTimeline(root, api) {
         <div class="tl-row tl-txt"></div>
         <div class="tl-row tl-sfx"></div>
         <canvas class="tl-wave" height="40"></canvas>
+        <div class="tl-clip" hidden></div>
         <div class="tl-head"></div>
       </div>
     </div>
@@ -157,6 +158,10 @@ export function mountTimeline(root, api) {
       sfxRow.appendChild(b);
     });
     renderTexts(dur);
+    // The part of the video used by the short being edited.
+    const clip = api.clip ? api.clip() : null, cb = root.querySelector('.tl-clip');
+    cb.hidden = !clip;
+    if (clip) { cb.style.left = `${clip.start * pps}px`; cb.style.width = `${(clip.end - clip.start) * pps}px`; }
     drawWave(W);
     syncPos();
     tick(api.time());
@@ -223,7 +228,7 @@ export function mountTimeline(root, api) {
     if (api.playing() && (x < scroll.scrollLeft || x > scroll.scrollLeft + scroll.clientWidth - 40)) scroll.scrollLeft = Math.max(0, x - 40);
   }
 
-  return { render, renderNow, tick, menu, reset() { fitted = false; sel = null; scroll.scrollLeft = 0; } };
+  return { render, renderNow, tick, menu, scrollTo(t) { scroll.scrollLeft = Math.max(0, t * pps - 40); }, reset() { fitted = false; sel = null; scroll.scrollLeft = 0; } };
 }
 
 /** Loudness peaks (0..1) every `step` seconds, for drawing the waveform. */
