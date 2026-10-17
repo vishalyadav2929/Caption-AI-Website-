@@ -146,6 +146,7 @@
   $('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) show(b.dataset.id); });
   $('panes').addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) { script(+b.dataset.script); show('script'); } });
   $('go').onclick = () => render();
+  { const u = new URLSearchParams(location.search).get('url'); if (u) { $('url').value = u; render(); } }
   $('url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); render(); } });
 </script>
 </body>

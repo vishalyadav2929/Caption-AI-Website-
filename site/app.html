@@ -71,7 +71,7 @@
       </nav>
       <p class="dash-sec">Create</p>
       <nav class="dash-nav">
-        <label for="startFile" id="navClips"><span aria-hidden="true">🎞</span> Long video → Shorts</label>
+        <a href="#" id="navClips"><span aria-hidden="true">🎞</span> Long video → Shorts</a>
         <label for="startFile"><span aria-hidden="true">💬</span> Auto captions</label>
         <a href="design.html" id="navThumb"><span aria-hidden="true">🎨</span> Design studio</a>
         <a href="grow.html" id="navGrow"><span aria-hidden="true">📈</span> YouTube growth plan</a>
@@ -109,7 +109,7 @@
       </label>
       <input type="file" id="photoFile" accept="image/*" hidden>
       <div class="dash-cards">
-        <label class="dash-card c5" for="startFile" id="cardClips"><b>Long video → Shorts</b><span>Upload a podcast or vlog, get several 9:16 clips with hooks and captions</span><i aria-hidden="true">🎞</i></label>
+        <a href="#" class="dash-card c5" id="cardClips"><b>Long video → Shorts</b><span>Upload a vlog or podcast, or paste its YouTube link: 9:16 clips with hooks, captions and series parts</span><i aria-hidden="true">🎞</i></a>
         <label class="dash-card c1" for="startFile"><b>Auto captions</b><span>Hindi, Hinglish, English + 30 languages, word-by-word</span><i aria-hidden="true">💬</i></label>
         <a class="dash-card c6" href="design.html" id="cardThumb"><b>Design studio</b><span>Thumbnails, Reels covers, Pinterest pins and posts: templates, text, stickers, photo editing</span><i aria-hidden="true">🎨</i></a>
         <label class="dash-card c2" for="photoFile"><b>Text on photo</b><span>Type on any photo, any font, download full size</span><i aria-hidden="true">🖼</i></label>
@@ -132,7 +132,7 @@
         <label class="dash-tool" for="startFile"><i aria-hidden="true">🔊</i><span>Sound effects</span></label>
         <label class="dash-tool" for="startFile"><i aria-hidden="true">📝</i><span>SRT subtitles</span></label>
         <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">✂️</i><span>Remove silences</span><em>Soon</em></span>
-        <label class="dash-tool hot" for="startFile" id="toolClips"><i aria-hidden="true">🎞</i><span>Long video to shorts</span><em>New</em></label>
+        <a href="#" class="dash-tool hot" id="toolClips"><i aria-hidden="true">🎞</i><span>Long video to shorts</span><em>New</em></a>
         <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">🗣</i><span>AI voiceover</span><em>Soon</em></span>
         <span class="dash-tool soon" title="Coming soon"><i aria-hidden="true">📜</i><span>Script to video</span><em>Soon</em></span>
       </div>
@@ -537,6 +537,19 @@
       </div>
     </aside>
   </main>
+  <dialog class="xdlg ls-dlg" id="lsDlg" aria-labelledby="lsTitle">
+    <form method="dialog">
+      <h2 id="lsTitle">Long video → Shorts</h2>
+      <label class="btn btn-primary btn-lg ls-up" for="startFile">⬆ Upload a video <small>MP4, MOV, WEBM · from your phone or computer</small></label>
+      <div class="ls-or">or</div>
+      <div class="ls-link">
+        <label for="lsUrl">🔗 Paste a YouTube link</label>
+        <div class="row"><input id="lsUrl" type="url" inputmode="url" placeholder="https://youtu.be/…"><button class="btn" id="lsCheck" type="button" value="">Check</button></div>
+        <div id="lsOut" hidden></div>
+      </div>
+      <div class="row"><button class="btn btn-sm" value="cancel">Close</button></div>
+    </form>
+  </dialog>
   <dialog class="xdlg" id="xDlg" aria-labelledby="xTitle">
     <form method="dialog">
       <h2 id="xTitle">Export</h2>

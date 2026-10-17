@@ -14,6 +14,7 @@ import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
 import { TEXT_FONTS, newLayer, drawLayer, layersAt, hitLayer, layout } from './text-layers.js';
 import { findClips, cropRect, ASPECTS, aspectSize } from './clips.js';
 import { TEXT_ANIMS, animState, breakApart } from './text-fx.js';
+import { youtubeId, titleCheck } from './grow.js';
 import { seriesOrder, partOf, partLabel, seriesCaptions } from './series.js';
 import { SIZES, OVERLAYS, THUMBS, photoRect, drawOverlay } from './thumbs.js';
 import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
@@ -2439,7 +2440,40 @@ const clipTime = which => () => {
 };
 $('clipStart').onchange = clipTime('start');
 $('clipEnd').onchange = clipTime('end');
-['cardClips', 'toolClips', 'navClips'].forEach(id => $(id).addEventListener('click', () => { S.wantClips = true; }));
+// Long video → Shorts: upload a file, or paste a YouTube link (details + how to get your own file).
+['cardClips', 'toolClips', 'navClips'].forEach(id => $(id).addEventListener('click', e => {
+  e.preventDefault(); S.wantClips = true;
+  $('lsOut').hidden = true; $('lsDlg').showModal ? $('lsDlg').showModal() : $('startFile').click();
+}));
+$('lsDlg').querySelector('.ls-up').addEventListener('click', () => { S.wantClips = true; $('lsDlg').close(); });
+async function checkLink() {
+  const url = $('lsUrl').value.trim(), id = youtubeId(url), out = $('lsOut');
+  out.hidden = false;
+  if (!id) { out.innerHTML = '<p class="warn">That isn’t a YouTube video link.</p>'; return; }
+  out.innerHTML = '<p class="hint">Checking…</p>';
+  let meta = null;
+  try { const r = await fetch(`/api/yt?url=${encodeURIComponent(url)}`); if (r.ok) meta = await r.json(); } catch { /* offline */ }
+  const tips = meta && meta.title ? titleCheck(meta.title).tips : [];
+  out.innerHTML = '';
+  const card = document.createElement('div'); card.className = 'ls-card';
+  const img = document.createElement('img'); img.src = `https://i.ytimg.com/vi/${id}/mqdefault.jpg`; img.alt = '';
+  const info = document.createElement('div');
+  const t = document.createElement('b'); t.textContent = meta ? meta.title : 'YouTube video';
+  const ch = document.createElement('small'); ch.textContent = meta ? meta.channel : '';
+  info.append(t, document.createElement('br'), ch);
+  card.append(img, info);
+  const steps = document.createElement('ol'); steps.className = 'ls-steps';
+  steps.innerHTML = '<li><b>Your own video?</b> In YouTube Studio: Content → ⋮ next to the video → <b>Download</b>. All your videos at once: <b>takeout.google.com</b> → YouTube → videos.</li><li>Upload that file here: we find the best moments, cut 9:16 shorts with hooks and captions, and number them as a series.</li>';
+  const up = document.createElement('label'); up.className = 'btn btn-primary'; up.htmlFor = 'startFile'; up.textContent = '⬆ Upload the downloaded video';
+  up.onclick = () => { S.wantClips = true; $('lsDlg').close(); };
+  const plan = document.createElement('a'); plan.className = 'btn btn-sm'; plan.href = `grow.html?url=${encodeURIComponent(url)}`; plan.textContent = '📈 Growth plan + new title & thumbnail ideas';
+  const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'We don’t download videos from YouTube links: YouTube’s terms only allow its own download options, and other people’s videos aren’t yours to re-post.';
+  out.append(card);
+  if (tips.length) { const ul = document.createElement('ul'); ul.className = 'ls-tips'; tips.slice(0, 3).forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); }); out.append(ul); }
+  out.append(steps, up, plan, note);
+}
+$('lsCheck').onclick = checkLink;
+$('lsUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkLink(); } });
 
 // ---------- thumbnail maker ----------
 /** The photo in its frame (fill or fit with blurred edges, panned), graded, plus the overlay. */
