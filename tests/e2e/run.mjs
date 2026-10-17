@@ -1294,6 +1294,40 @@ await step('captions panel has the caption style: style strip, font, size, colou
   await ctx.close();
 });
 
+await step('caption animation: pick another entry, or turn all animation off (captions show fully at their first frame)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('#tabCaptions');
+  await m.locator('.cap-tpl', { hasText: 'Spark' }).click();
+  // Ink drawn at the very first moment of a caption, with the current style.
+  const ink = () => m.evaluate(async () => {
+    const { drawCaption, buildChunks, spreadWords } = await import('./js/renderer.js');
+    const c = document.createElement('canvas'); c.width = 540; c.height = 960;
+    const x = c.getContext('2d');
+    const chunk = buildChunks(spreadWords('this is how your reels go viral', 1, 3), 3, 32)[0];
+    drawCaption(x, 540, 960, chunk, chunk.start, window.__vcz.tpl());
+    const d = x.getImageData(0, 0, 540, 960).data; let n = 0;
+    for (let i = 3; i < d.length; i += 4) n += d[i] > 128;
+    return n;
+  });
+  assert.equal(await ink(), 0, 'Spark pops in: nothing at its first frame');
+  await m.selectOption('#capAnim', 'slide-right');
+  assert.equal(await m.evaluate(() => window.__vcz.tpl().anim), 'slide-right');
+  await m.click('#tabStyle');
+  await m.click('#animOff');
+  assert.deepEqual(await m.evaluate(() => { const t = window.__vcz.tpl(); return [t.anim, t.reveal, t.hi]; }), ['none', 'none', 'none']);
+  assert.ok(await ink() > 200, 'no animation: the caption is fully there at once');
+  assert.equal(await m.inputValue('#capAnim'), 'none', 'the Captions panel shows it too');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
