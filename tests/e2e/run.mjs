@@ -1411,7 +1411,8 @@ await step('Long video → Shorts offers upload or a YouTube link (details, how 
   await m.waitForSelector('.ls-card');
   assert.match(await m.textContent('#lsOut'), /my goa vlog/);
   assert.match(await m.textContent('#lsOut'), /YouTube Studio/);
-  assert.match(await m.getAttribute('#lsOut a', 'href'), /grow\.html\?url=/);
+  assert.equal(await m.getAttribute('.ls-studio', 'href'), 'https://studio.youtube.com/video/dQw4w9WgXcQ/edit');
+  assert.match(await m.getAttribute('#lsOut a[href^="grow"]', 'href'), /grow\.html\?url=/);
   await m.locator('#lsOut label.btn').click({ trial: true });
   await m.evaluate(() => document.getElementById('lsDlg').close());
   await m.setInputFiles('#startFile', join(FIX, 'long16x9.webm'));

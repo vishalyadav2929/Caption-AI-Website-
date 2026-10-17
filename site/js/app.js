@@ -2464,13 +2464,16 @@ async function checkLink() {
   card.append(img, info);
   const steps = document.createElement('ol'); steps.className = 'ls-steps';
   steps.innerHTML = '<li><b>Your own video?</b> In YouTube Studio: Content → ⋮ next to the video → <b>Download</b>. All your videos at once: <b>takeout.google.com</b> → YouTube → videos.</li><li>Upload that file here: we find the best moments, cut 9:16 shorts with hooks and captions, and number them as a series.</li>';
+  // Studio opens only for the channel that owns the video; its ⋮ menu has Download.
+  const studio = document.createElement('a'); studio.className = 'btn ls-studio'; studio.href = `https://studio.youtube.com/video/${id}/edit`; studio.target = '_blank'; studio.rel = 'noopener';
+  studio.textContent = '⬇ Download it in YouTube Studio (your own videos)';
   const up = document.createElement('label'); up.className = 'btn btn-primary'; up.htmlFor = 'startFile'; up.textContent = '⬆ Upload the downloaded video';
   up.onclick = () => { S.wantClips = true; $('lsDlg').close(); };
   const plan = document.createElement('a'); plan.className = 'btn btn-sm'; plan.href = `grow.html?url=${encodeURIComponent(url)}`; plan.textContent = '📈 Growth plan + new title & thumbnail ideas';
   const note = document.createElement('p'); note.className = 'hint'; note.textContent = 'We don’t download videos from YouTube links: YouTube’s terms only allow its own download options, and other people’s videos aren’t yours to re-post.';
   out.append(card);
   if (tips.length) { const ul = document.createElement('ul'); ul.className = 'ls-tips'; tips.slice(0, 3).forEach(x => { const li = document.createElement('li'); li.textContent = x; ul.appendChild(li); }); out.append(ul); }
-  out.append(steps, up, plan, note);
+  out.append(steps, studio, up, plan, note);
 }
 $('lsCheck').onclick = checkLink;
 $('lsUrl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkLink(); } });
