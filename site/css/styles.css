@@ -1020,3 +1020,18 @@ body.design #ltabClips, body.design #tabCaptions, body.design #ltabSnd, body.des
 .clip-series { border: 1px dashed var(--line); border-radius: 12px; padding: 10px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .clip-series input:not([type]), .clip-series select { flex: 1; min-width: 0; }
 .clip-series textarea { width: 100%; box-sizing: border-box; font-size: 12px; }
+
+/* Long video → Shorts: upload or paste a link */
+.ls-dlg { width: min(520px, calc(100vw - 32px)); background: #14141d; color: #ececf1; }
+.ls-dlg h2 { margin: 0; }
+.ls-up { display: flex; flex-direction: column; gap: 2px; text-align: center; padding: 16px; }
+.ls-up small { font-weight: 500; opacity: .85; font-size: 12px; }
+.ls-or { text-align: center; opacity: .6; font-size: 13px; }
+.ls-link { display: grid; gap: 8px; }
+.ls-link label { font-weight: 700; }
+.ls-link .row input { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: 1px solid #2b2b3a; background: #0b0b12; color: #fff; }
+#lsOut { display: grid; gap: 10px; }
+.ls-card { display: flex; gap: 10px; align-items: flex-start; }
+.ls-card img { width: 140px; border-radius: 8px; }
+.ls-steps, .ls-tips { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
+.ls-tips li { color: #fbbf24; }

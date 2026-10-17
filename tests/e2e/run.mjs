@@ -1396,6 +1396,34 @@ await step('series: PART labels in story order, numbered downloads, a caption fo
   await ctx.close();
 });
 
+await step('Long video → Shorts offers upload or a YouTube link (details, how to get the file, growth plan)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.route('**/api/yt?*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ id: 'dQw4w9WgXcQ', title: 'my goa vlog #vlog', channel: 'Me', thumbnail: '' }) }));
+  await m.route('https://i.ytimg.com/**', r => r.fulfill({ status: 404, body: '' }));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#cardClips');
+  await m.waitForSelector('#lsDlg[open]');
+  assert.equal(await m.isVisible('.ls-up'), true, 'upload option');
+  await m.fill('#lsUrl', 'https://youtu.be/dQw4w9WgXcQ');
+  await m.click('#lsCheck');
+  await m.waitForSelector('.ls-card');
+  assert.match(await m.textContent('#lsOut'), /my goa vlog/);
+  assert.match(await m.textContent('#lsOut'), /YouTube Studio/);
+  assert.match(await m.getAttribute('#lsOut a', 'href'), /grow\.html\?url=/);
+  await m.locator('#lsOut label.btn').click({ trial: true });
+  await m.evaluate(() => document.getElementById('lsDlg').close());
+  await m.setInputFiles('#startFile', join(FIX, 'long16x9.webm'));
+  await m.waitForFunction(() => window.__vcz.S.file && /long16x9/.test(window.__vcz.S.file.name), null, { timeout: 15000 });
+  assert.equal(await m.evaluate(() => window.__vcz.S.wantClips), true, 'opens Clips once captions are made');
+  await m.goto(`${BASE}/grow.html?url=${encodeURIComponent('https://youtu.be/dQw4w9WgXcQ')}`);
+  await m.waitForSelector('#out:not([hidden])');
+  assert.match(await m.textContent('section[data-id="link"]'), /my goa vlog/);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
