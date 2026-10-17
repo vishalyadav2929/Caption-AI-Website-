@@ -73,6 +73,7 @@
       <nav class="dash-nav">
         <label for="startFile" id="navClips"><span aria-hidden="true">🎞</span> Long video → Shorts</label>
         <label for="startFile"><span aria-hidden="true">💬</span> Auto captions</label>
+        <label for="photoFile" id="navThumb"><span aria-hidden="true">🎯</span> Thumbnail maker</label>
         <label for="photoFile"><span aria-hidden="true">🖼</span> Text on photo</label>
         <a href="#live" class="js-live"><span aria-hidden="true">●</span> Live captions</a>
       </nav>
@@ -104,6 +105,7 @@
       <div class="dash-cards">
         <label class="dash-card c5" for="startFile" id="cardClips"><b>Long video → Shorts</b><span>Upload a podcast or vlog, get several 9:16 clips with hooks and captions</span><i aria-hidden="true">🎞</i></label>
         <label class="dash-card c1" for="startFile"><b>Auto captions</b><span>Hindi, Hinglish, English + 30 languages, word-by-word</span><i aria-hidden="true">💬</i></label>
+        <label class="dash-card c6" for="photoFile" id="cardThumb"><b>Thumbnail maker</b><span>YouTube thumbnails, Reels covers and Pinterest pins from your photo, fully editable</span><i aria-hidden="true">🖼</i></label>
         <label class="dash-card c2" for="photoFile"><b>Text on photo</b><span>Type on any photo, any font, download full size</span><i aria-hidden="true">🖼</i></label>
         <a class="dash-card c3" href="#live" id="startLive"><b>Live captions</b><span>Record with your camera, captions appear as you speak</span><i aria-hidden="true">🎥</i></a>
         <a class="dash-card c4" href="#" id="startSkip"><b>Blank project</b><span>Open the editor and add media later</span><i aria-hidden="true">✚</i></a>
@@ -175,7 +177,7 @@
 
     <aside class="panel tools" aria-label="Tools">
       <div class="tool-tabs" role="tablist" aria-label="Tools">
-        <button class="tool-tab on" id="ltabMedia" role="tab" aria-selected="true" aria-controls="paneMedia"><i aria-hidden="true">▣</i><span>Media</span></button><button class="tool-tab" id="ltabClips" role="tab" aria-selected="false" aria-controls="paneClips"><i aria-hidden="true">✂</i><span>Clips</span></button><button class="tool-tab" id="tabCaptions" role="tab" aria-selected="false" aria-controls="paneCaptions"><i aria-hidden="true">💬</i><span>Captions</span></button><button class="tool-tab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText"><i aria-hidden="true">T</i><span>Text</span></button><button class="tool-tab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd"><i aria-hidden="true">♪</i><span>Audio</span></button><button class="tool-tab" id="ltabTpl" role="tab" aria-selected="false" aria-controls="paneTpl"><i aria-hidden="true">✦</i><span>Styles</span></button><button class="tool-tab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor"><i aria-hidden="true">◐</i><span>Filters</span></button><button class="tool-tab" id="ltabAdj" role="tab" aria-selected="false" aria-controls="paneAdjust"><i aria-hidden="true">☰</i><span>Adjust</span></button>
+        <button class="tool-tab on" id="ltabMedia" role="tab" aria-selected="true" aria-controls="paneMedia"><i aria-hidden="true">▣</i><span>Media</span></button><button class="tool-tab" id="ltabClips" role="tab" aria-selected="false" aria-controls="paneClips"><i aria-hidden="true">✂</i><span>Clips</span></button><button class="tool-tab" id="tabCaptions" role="tab" aria-selected="false" aria-controls="paneCaptions"><i aria-hidden="true">💬</i><span>Captions</span></button><button class="tool-tab" id="ltabText" role="tab" aria-selected="false" aria-controls="paneText"><i aria-hidden="true">T</i><span>Text</span></button><button class="tool-tab" id="ltabThumb" role="tab" aria-selected="false" aria-controls="paneThumb"><i aria-hidden="true">🖼</i><span>Thumbnail</span></button><button class="tool-tab" id="ltabSnd" role="tab" aria-selected="false" aria-controls="paneSnd"><i aria-hidden="true">♪</i><span>Audio</span></button><button class="tool-tab" id="ltabTpl" role="tab" aria-selected="false" aria-controls="paneTpl"><i aria-hidden="true">✦</i><span>Styles</span></button><button class="tool-tab" id="tabColor" role="tab" aria-selected="false" aria-controls="paneColor"><i aria-hidden="true">◐</i><span>Filters</span></button><button class="tool-tab" id="ltabAdj" role="tab" aria-selected="false" aria-controls="paneAdjust"><i aria-hidden="true">☰</i><span>Adjust</span></button>
       </div>
       <div class="panel-b" id="paneMedia" role="tabpanel">
         <label class="media-import" for="fileIn" id="mediaDrop"><span aria-hidden="true">+</span><strong>Import</strong><small>Drop videos, audio or photos (several at once) · they stay on your device</small></label>
@@ -205,12 +207,13 @@
         </div>
         <p class="hint">Turn a long video into Shorts. We read your captions and pick whole-sentence moments with a strong first line, lively speech and no dead air, then crop them to 9:16 with a hook title on top.</p>
         <div class="row field clip-opts">
-          <div><label for="clipLen">Length</label><select id="clipLen"><option value="15-30">15–30 s</option><option value="20-60" selected>20–60 s</option><option value="45-90">45–90 s</option></select></div>
-          <div><label for="clipCount">How many</label><select id="clipCount"><option>3</option><option selected>5</option><option>8</option><option>12</option></select></div>
+          <div><label for="clipLen">Length</label><select id="clipLen"><option value="20-35">~30 s</option><option value="45-65">~60 s</option><option value="15-30">15–30 s</option><option value="20-60" selected>20–60 s (best fit)</option><option value="45-90">45–90 s</option></select></div>
+          <div><label for="clipCount">How many</label><select id="clipCount"><option>3</option><option>5</option><option>6</option><option selected>8</option><option>10</option><option>12</option></select></div>
         </div>
         <button class="btn btn-primary clip-find" id="clipFind" type="button">✨ Find viral clips</button>
         <p class="clip-note" id="clipNote"></p>
         <div class="clip-list" id="clipList"></div>
+        <button class="btn clip-all" id="clipAll" type="button" hidden>⬇ Export all shorts</button>
       </div>
       <div class="panel-b" id="paneCaptions" role="tabpanel" hidden>
         <div class="status" id="status" role="status" aria-live="polite"></div>
@@ -259,11 +262,32 @@
 
       <div class="panel-b" id="paneText" role="tabpanel" hidden>
         <button class="btn btn-primary txt-add" id="txtAdd" type="button">+ Add text</button>
+        <div class="auto-cap" id="txtAutoCap"><button class="btn btn-sm" id="txtMakeCaps" type="button">✨ Auto captions from speech</button><small>Auto captions and your own text work together on the same video.</small></div>
         <p class="hint">Type anything. It shows exactly as you type it, all at once (not word by word). Press Enter for a new line. Drag it on the video to move it.</p>
         <div class="txt-list" id="txtList"></div>
       </div>
+      <div class="panel-b" id="paneThumb" role="tabpanel" hidden>
+        <div id="thumbNoPhoto">
+          <p class="hint">Make a thumbnail or cover from a photo, or from a frame of your video. Pick a layout below; every text, colour and position stays editable.</p>
+          <div class="row thumb-src"><button class="btn btn-sm btn-primary" id="thumbFromFrame" type="button">📸 Use this video frame</button><label class="btn btn-sm" for="photoFile2">🖼 Upload a photo</label></div>
+          <input type="file" id="photoFile2" accept="image/*" hidden>
+        </div>
+        <div id="thumbTools" hidden>
+          <div class="field"><label for="thumbSize">Size</label><select id="thumbSize"></select></div>
+          <div class="row field">
+            <div><label for="thumbFit">Photo</label><select id="thumbFit"><option value="cover">Fill the frame</option><option value="contain">Fit inside, blurred edges</option></select></div>
+            <div><label for="thumbOverlay">Overlay</label><select id="thumbOverlay"></select></div>
+          </div>
+          <div class="row field"><div class="color"><input type="color" id="thumbOvColor" value="#7c3aed" aria-label="Overlay colour"> Overlay colour</div></div>
+          <p class="hint">Drag the photo on the preview to move it. Click a text to edit it (font, colours, words, one line), or add more in Text.</p>
+        </div>
+        <h3 class="more-h">Layouts</h3>
+        <div class="thumb-grid" id="thumbGrid"></div>
+        <button class="btn btn-primary thumb-dl" id="thumbExport" type="button" hidden>⬇ Download thumbnail</button>
+      </div>
       <div class="panel-b" id="paneSnd" role="tabpanel" hidden></div>
       <div class="panel-b" id="paneTpl" role="tabpanel" hidden>
+        <div class="style-for-row" id="styleForRow"><span>Style goes on</span><div class="seg-ctl" id="styleFor" role="radiogroup" aria-label="Style goes on"><button data-v="cap" role="radio" type="button">💬 Captions</button><button data-v="text" role="radio" type="button">T Text</button></div></div>
         <div class="tabs" id="langTabs" aria-label="Preview language"></div>
         <div class="tabs" id="tabs" aria-label="Filter styles"></div>
         <div class="grid" id="grid"></div>
@@ -420,13 +444,18 @@
           </div>
           <div class="field txt-tpl"><label>Template style</label>
             <div class="row"><b id="txtTplName">None (plain text)</b><button class="btn btn-sm" id="txtTplPick" type="button">Choose style</button><button class="btn btn-sm" id="txtTplClear" type="button" hidden>Remove</button></div>
-            <small class="tpl-note">With a template, its font, colours, outline and animation are used. Size, place and timing stay yours.</small>
+            <button class="btn btn-sm txt-break" id="txtBreak" type="button" hidden>✂ Break apart (edit each line separately)</button>
+            <small class="tpl-note">With a template, its font, colours, outline and animation are used. Size, place and timing stay yours. Break apart turns it into separate texts you can style and animate one by one.</small>
+          </div>
+          <div class="field"><label for="txtAnim">Animation</label>
+            <div class="row"><select id="txtAnim"></select><button class="btn btn-sm" id="txtAnimAll" type="button">Use on all texts</button></div>
           </div>
           <div class="field"><label for="txtFont">Font</label><select id="txtFont"></select></div>
           <div class="field"><label for="txtSize">Size <b id="txtSizeVal"></b></label><input type="range" id="txtSize" min="2" max="30" value="7"></div>
           <div class="row field txt-style">
             <button type="button" class="tgl" id="txtBold" aria-pressed="true"><b>B</b></button>
             <button type="button" class="tgl" id="txtItalic" aria-pressed="false"><i>I</i></button>
+            <button type="button" class="tgl tgl-wide" id="txtOneLine" aria-pressed="false" title="Keep the whole text on one line">1 line</button>
             <div class="seg-ctl" id="txtAlign" role="radiogroup" aria-label="Text alignment"><button data-v="left" role="radio">Left</button><button data-v="center" role="radio">Center</button><button data-v="right" role="radio">Right</button></div>
           </div>
           <div class="row field">

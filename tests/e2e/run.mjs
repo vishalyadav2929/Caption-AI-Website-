@@ -31,7 +31,9 @@ const server = createServer(async (req, res) => {
 const BASE = `http://localhost:${server.address().port}`;
 
 const results = [];
+// ONLY=<text> runs just the steps whose name contains it (handy for steps with their own browser context).
 const step = async (name, fn) => {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
   try { await fn(); results.push(['PASS', name]); console.log('PASS', name); }
   catch (e) { results.push(['FAIL', name, e.message]); console.log('FAIL', name, '\n  ', e.message); }
 };
@@ -1137,6 +1139,108 @@ await step('media library: import several files at once, click one to open it, e
   await m.click('#ltabMedia');
   await m.locator('#mediaBin .media-item', { hasText: 'portrait' }).click();
   await m.waitForFunction(() => window.__vcz.S.file && /portrait/.test(window.__vcz.S.file.name) && window.__vcz.S.segments.length > 0, null, { timeout: 10000 });
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('thumbnail maker: photo → layout → editable text → download at the chosen size; frame from a video', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  // A frame of the video becomes the thumbnail photo.
+  await m.click('#ltabThumb');
+  await m.click('#thumbFromFrame');
+  await m.waitForFunction(() => window.__vcz.S.image && window.__vcz.S.o.frame, null, { timeout: 10000 });
+  await m.selectOption('#thumbSize', 'yt');
+  assert.deepEqual(await m.evaluate(() => [document.getElementById('stage').width, document.getElementById('stage').height]), [1280, 720]);
+  await m.locator('#thumbGrid .thumb-tile', { hasText: 'Big Bold' }).click();
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.overlay.type), 'shade-bottom');
+  assert.match(await m.evaluate(() => window.__vcz.S.o.texts[0].text), /BELIEVE/);
+  // Its text is a normal text: edit it, one line.
+  await m.fill('#txtText', 'MY OWN TITLE');
+  await m.click('#txtOneLine');
+  assert.deepEqual(await m.evaluate(() => [window.__vcz.S.o.texts[0].text, window.__vcz.S.o.texts[0].oneLine]), ['MY OWN TITLE', true]);
+  await m.click('#ltabThumb');
+  const dl = m.waitForEvent('download', { timeout: 30000 });
+  await m.click('#thumbExport');
+  const d = await dl; const file = join(OUT, `thumb-${d.suggestedFilename()}`); await d.saveAs(file);
+  assert.match(d.suggestedFilename(), /thumbnail\.jpg$/);
+  const dims = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file]).toString().trim();
+  assert.equal(dims, '1280,720');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('templates break apart into separate texts, each with its own animation; captions and text side by side', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'landscape.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  // Text tool offers auto captions too.
+  await m.click('#ltabText');
+  assert.equal(await m.isVisible('#txtMakeCaps'), true, 'auto captions offered in Text');
+  await m.click('#txtAdd');
+  await m.fill('#txtText', 'hello dada kem chhooo');
+  await pickTpl(m, 'Red Wipe');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'red-wipe');
+  // The switch sends the next style to the captions instead.
+  await m.click('#styleFor button[data-v="cap"]');
+  await pickTpl(m, 'Spark');
+  assert.equal(await m.evaluate(() => window.__vcz.S.tplId), 'spark', 'style went to captions');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'red-wipe', 'text kept its style');
+  await m.click('#styleFor button[data-v="text"]');
+  // Break apart: two plain texts, one per line.
+  await m.click('#ltabText');
+  await m.locator('#txtList .txt-item').first().click();
+  await m.click('#txtBreak');
+  const parts = await m.evaluate(() => window.__vcz.S.o.texts.map(t => [t.text, t.tpl, t.bgOp]));
+  assert.deepEqual(parts, [['Hello Dada', null, 0], ['kem chhooo', null, 100]]);
+  // Give the second its own animation; the first keeps another.
+  await m.locator('#txtList .txt-item').nth(1).click();
+  await m.selectOption('#txtAnim', 'type');
+  const anims = await m.evaluate(() => window.__vcz.S.o.texts.map(t => t.anim));
+  assert.equal(anims[1], 'type'); assert.notEqual(anims[0], 'type');
+  // Typewriter shows part of the text early on, all of it later (drawn without errors either way).
+  await m.evaluate(async () => { const v = window.__vcz.video; v.currentTime = 0.2; await new Promise(r => { v.addEventListener('seeked', r, { once: true }); setTimeout(r, 3000); }); });
+  await m.waitForTimeout(200);
+  await m.evaluate(async () => { const v = window.__vcz.video; v.currentTime = 2.5; await new Promise(r => { v.addEventListener('seeked', r, { once: true }); setTimeout(r, 3000); }); });
+  await m.waitForTimeout(200);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('long video → ~30 s shorts: Export all saves every short', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  await m.addInitScript(() => { window.__vczFastCodecs = ['vp9']; });
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  m.on('dialog', d => d.accept());
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'long16x9.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'long16x9.srt'));
+  await m.click('#ltabClips');
+  await m.selectOption('#clipLen', '15-30');
+  await m.selectOption('#clipCount', '3');
+  await m.click('#clipFind');
+  await m.waitForSelector('.clip-card');
+  const n = await m.evaluate(() => window.__vcz.S.o.found.length);
+  assert.ok(n >= 2, `found ${n} shorts`);
+  assert.equal(await m.isVisible('#clipAll'), true);
+  const names = [];
+  m.on('download', d => names.push(d.suggestedFilename()));
+  await m.click('#clipAll');
+  await m.waitForFunction(k => !window.__vcz.S.exporting && /Exported \d+ shorts/.test(document.getElementById('status').textContent), n, { timeout: 240000 });
+  await m.waitForTimeout(500);
+  assert.equal(names.length, n, `downloads: ${names.join(', ')}`);
   assert.deepEqual(errs, []);
   await ctx.close();
 });
