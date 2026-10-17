@@ -1017,3 +1017,6 @@ body.design #ltabClips, body.design #tabCaptions, body.design #ltabSnd, body.des
 .st-btn { font-size: 22px; padding: 4px 0; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; }
 .st-btn:hover, .el-btn:hover { border-color: var(--accent); }
 .clip-grow { display: block; margin: 8px 0; font-size: 13px; }
+.clip-series { border: 1px dashed var(--line); border-radius: 12px; padding: 10px; margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.clip-series input:not([type]), .clip-series select { flex: 1; min-width: 0; }
+.clip-series textarea { width: 100%; box-sizing: border-box; font-size: 12px; }

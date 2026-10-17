@@ -1358,6 +1358,44 @@ await step('YouTube growth planner: link check, 30 ideas, script, calendar, thum
   await ctx.close();
 });
 
+await step('series: PART labels in story order, numbered downloads, a caption for every part', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  await m.addInitScript(() => { window.__vczFastCodecs = ['vp9']; });
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  m.on('dialog', d => d.accept());
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'long16x9.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'long16x9.srt'));
+  await m.click('#ltabClips');
+  await m.selectOption('#clipLen', '15-30');
+  await m.selectOption('#clipCount', '3');
+  await m.click('#clipFind');
+  await m.waitForSelector('.clip-card');
+  const n = await m.evaluate(() => window.__vcz.S.o.found.length);
+  await m.check('#seriesOn');
+  await m.fill('#seriesName', 'Money Tips'); await m.locator('#seriesName').press('Tab');
+  await m.locator('.clip-card').first().locator('button:has-text("Use this short")').click();
+  const label = await m.evaluate(() => window.__vcz.S.o.texts.find(t => t.part).text);
+  assert.match(label, new RegExp(`^MONEY TIPS · PART \\d/${n}$`));
+  await m.click('#seriesCaps');
+  const caps = await m.inputValue('#seriesOut');
+  assert.equal((caps.match(/— Part \d —/g) || []).length, n);
+  assert.match(caps, /Part 2 is next/);
+  const names = [];
+  m.on('download', d => names.push(d.suggestedFilename()));
+  await m.click('#clipAll');
+  await m.waitForFunction(() => !window.__vcz.S.exporting && /Exported \d+ shorts/.test(document.getElementById('status').textContent), null, { timeout: 240000 });
+  await m.waitForTimeout(500);
+  assert.deepEqual(names.map(x => x.match(/part-(\d+)/)[1]), Array.from({ length: n }, (_, k) => String(k + 1)), names.join(', '));
+  const starts = await m.evaluate(() => window.__vcz.S.o.found.map(f => f.start));
+  assert.ok(starts.length === n);
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

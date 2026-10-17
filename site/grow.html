@@ -56,6 +56,7 @@
         <label>Subscribers now<input id="subs" type="number" min="0" value="0"></label>
         <label>Long videos / week<select id="lpw"><option>1</option><option selected>2</option><option>3</option></select></label>
         <label>Shorts / week<select id="spw"><option>3</option><option selected>5</option><option>7</option><option>14</option></select></label>
+        <label>Script language<select id="lang"><option value="hinglish">Hinglish</option><option value="hindi">हिंदी</option><option value="english">English</option></select></label>
         <label>Video length<select id="mins"><option value="6">6 min</option><option value="8">8 min</option><option value="10" selected>10 min</option><option value="15">15 min</option></select></label>
       </form>
       <button class="gr-go" id="go" type="button">✨ Make my plan</button>
@@ -70,10 +71,11 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   for (const [k, n] of Object.entries(NICHES)) $('niche').add(new Option(n.name, k));
-  try { const s = JSON.parse(localStorage.getItem('vcz-grow') || '{}'); for (const k of ['niche', 'topic', 'subs', 'lpw', 'spw', 'mins']) if (s[k] != null) $(k).value = s[k]; } catch { /* no storage */ }
+  try { const s = JSON.parse(localStorage.getItem('vcz-grow') || '{}'); for (const k of ['niche', 'topic', 'subs', 'lpw', 'spw', 'mins', 'lang']) if (s[k] != null) $(k).value = s[k]; } catch { /* no storage */ }
   const design = (layout, text) => `app.html#design=yt&layout=${layout}&text=${encodeURIComponent(text)}`;
   const TABS = [['link', '🔗 Your video'], ['strategy', '🧭 Strategy'], ['ideas', '💡 30 ideas'], ['script', '📝 Script'], ['calendar', '📅 30 days'], ['money', '💰 Monetization']];
-  let state = {};
+  let state = {}, aiOn = false;
+  fetch('/api/script').then(r => r.ok ? r.json() : {}).then(j => { aiOn = !!j.enabled; }).catch(() => {});
   function show(id) {
     document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.id === id));
     document.querySelectorAll('#panes > section').forEach(p => { p.hidden = p.dataset.id !== id; });
@@ -90,10 +92,10 @@
       <div><h3>${title ? esc(title) : 'Title not available here'}</h3>${meta ? `<small>${esc(meta.channel)}</small>` : '<p class="gr-note">Couldn’t read the title (private video, or the site isn’t online). Type it in “Your topic” to plan around it.</p>'}
       ${chk ? (chk.ok ? '<p class="ok">✓ Title looks well packaged.</p>' : `<ul>${chk.tips.map(t => `<li class="warn">${esc(t)}</li>`).join('')}</ul>`) : ''}
       <div class="gr-btns"><a href="${design(NICHES[$('niche').value].layout, (title || 'YOUR TITLE').split(' ').slice(0, 4).join(' ').toUpperCase())}">🎨 Make a new thumbnail</a><a href="app.html" class="clipsLink">🎞 Cut Shorts from it</a></div>
-      <p class="gr-note">To cut Shorts, download your own video from YouTube Studio (Content → ⋮ → Download) and upload it in Long video → Shorts. We don’t download videos from YouTube links: YouTube’s terms don’t allow it.</p></div></div>`;
+      <p class="gr-note">To cut Shorts, download your own video from YouTube Studio (Content → ⋮ → Download), or all your videos at once with Google Takeout (takeout.google.com → YouTube → videos), then upload them in Long video → Shorts. We don’t download videos from YouTube links: YouTube’s terms don’t allow it.</p></div></div>`;
   }
   async function render() {
-    const f = { niche: $('niche').value, topic: $('topic').value, subs: +$('subs').value || 0, lpw: +$('lpw').value, spw: +$('spw').value, mins: +$('mins').value };
+    const f = { lang: $('lang').value, niche: $('niche').value, topic: $('topic').value, subs: +$('subs').value || 0, lpw: +$('lpw').value, spw: +$('spw').value, mins: +$('mins').value };
     try { localStorage.setItem('vcz-grow', JSON.stringify(f)); } catch { /* no storage */ }
     const n = NICHES[f.niche], list = ideas(f.niche, f.topic, 30);
     state = { f, n, list };
@@ -129,8 +131,17 @@
     $('scriptBox').innerHTML = `<div class="gr-card"><h3>📝 ${esc(x.title)}</h3><p class="gr-note">Thumbnail text: “${esc(x.thumbText)}” · ${state.f.mins} min · Shorts to cut: ${x.shorts.map(esc).join(' / ')}</p>
       <ol>${s.parts.map(p => `<li><b>${p.at} · ${esc(p.what)}</b><br>${esc(p.say)}</li>`).join('')}</ol>
       <h3>Description</h3><textarea readonly rows="9" style="width:100%;background:#0b0b12;color:#ddd;border:1px solid #2b2b3a;border-radius:10px;padding:10px" id="desc">${esc(s.description)}</textarea>
-      <div class="gr-btns"><button type="button" id="copyDesc">Copy description</button><a href="${design(x.layout, x.thumbText)}">🎨 Make the thumbnail</a></div></div>`;
+      <div class="gr-btns"><button type="button" id="copyDesc">Copy description</button><a href="${design(x.layout, x.thumbText)}">🎨 Make the thumbnail</a>${aiOn ? '<button type="button" id="aiScript">✨ Write the full script with AI</button>' : ''}</div>
+      <pre id="aiOut" hidden style="white-space:pre-wrap;background:#0b0b12;border:1px solid #2b2b3a;border-radius:10px;padding:12px;margin-top:10px"></pre></div>`;
     $('copyDesc').onclick = () => navigator.clipboard && navigator.clipboard.writeText($('desc').value);
+    if (aiOn) $('aiScript').onclick = async () => {
+      const out = $('aiOut'); out.hidden = false; out.textContent = 'Writing your script…';
+      try {
+        const r = await fetch('/api/script', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: x.title, niche: state.n.name, minutes: state.f.mins, lang: $('lang').value }) });
+        const j = await r.json();
+        out.textContent = r.ok ? j.script : `Couldn’t write it now (${j.error || r.status}). Try again in a minute.`;
+      } catch { out.textContent = 'No connection. Try again.'; }
+    };
   }
   $('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) show(b.dataset.id); });
   $('panes').addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) { script(+b.dataset.script); show('script'); } });

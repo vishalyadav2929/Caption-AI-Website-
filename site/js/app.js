@@ -14,6 +14,7 @@ import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
 import { TEXT_FONTS, newLayer, drawLayer, layersAt, hitLayer, layout } from './text-layers.js';
 import { findClips, cropRect, ASPECTS, aspectSize } from './clips.js';
 import { TEXT_ANIMS, animState, breakApart } from './text-fx.js';
+import { seriesOrder, partOf, partLabel, seriesCaptions } from './series.js';
 import { SIZES, OVERLAYS, THUMBS, photoRect, drawOverlay } from './thumbs.js';
 import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
@@ -109,7 +110,7 @@ function tpl() {
 }
 const wordsPerCaption = () => S.o.words || baseTpl().words;
 // What survives a template change or "Reset to template": everything that isn't caption styling.
-const keepO = () => ({ scale: S.o.scale || 1, sfx: S.o.sfx, sfxAuto: S.o.sfxAuto, grade: S.o.grade, texts: S.o.texts, clip: S.o.clip, found: S.o.found });
+const keepO = () => ({ scale: S.o.scale || 1, sfx: S.o.sfx, sfxAuto: S.o.sfxAuto, grade: S.o.grade, texts: S.o.texts, clip: S.o.clip, found: S.o.found, series: S.o.series });
 
 // ---------- undo / redo ----------
 let hist = [], hIdx = -1;
@@ -1920,7 +1921,7 @@ async function exportVideo({ kind = 'video', size, batch } = {}) {
       }).catch(err => { console.warn('Fast export failed, trying the real-time path', err); return null; });
       if (fast === 'cancelled' || job.cancelled) { status('Export cancelled.'); return; }
       if (fast) {
-        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${S.o.clip ? `short-${Math.round(range.start)}s` : 'captioned'}.mp4`;
+        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${S.o.clip ? shortTag(range) : 'captioned'}.mp4`;
         download(fast, name);
         const secs = (performance.now() - t0x) / 1000;
         status(`Exported “${name}” (${fmtBytes(fast.size)}, ${size.w}×${size.h}) in ${secs.toFixed(1)} s.`);
@@ -1949,7 +1950,7 @@ async function exportVideo({ kind = 'video', size, batch } = {}) {
       }).catch(err => { console.warn('WebCodecs export failed, using MediaRecorder', err); return null; });
       if (wc === 'cancelled' || job.cancelled) { status('Export cancelled.'); return; }
       if (wc) {
-        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${S.o.clip ? `short-${Math.round(range.start)}s` : 'captioned'}.mp4`;
+        const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${S.o.clip ? shortTag(range) : 'captioned'}.mp4`;
         download(wc, name);
         status(`Exported “${name}” (${fmtBytes(wc.size)}, ${size.w}×${size.h}, original audio kept).`);
         window.__vczLastExport = 'webcodecs';
@@ -2026,7 +2027,7 @@ async function exportVideo({ kind = 'video', size, batch } = {}) {
       $('exportText').textContent = 'Finishing file…';
       blob = await window.ysFixWebmDuration(blob, dur * 1000, { logger: false });
     }
-    const suffix = S.o.clip ? `short-${Math.round(range.start)}s` : kind === 'video' ? 'captioned' : kind === 'alpha' ? 'captions-transparent' : 'captions-greenscreen';
+    const suffix = S.o.clip ? shortTag(range) : kind === 'video' ? 'captioned' : kind === 'alpha' ? 'captions-transparent' : 'captions-greenscreen';
     const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${suffix}.${ext}`;
     download(blob, name);
     status(`Exported “${name}” (${fmtBytes(blob.size)}, ${size.w}×${size.h}).` +
@@ -2314,7 +2315,10 @@ function applyClip(i) {
   const others = texts().filter(l => !l.hook);
   const prev = S.o.clip || {};
   const hook = c.title && prev.hook !== false ? [newLayer({ text: c.title, start: c.start, end: Math.min(c.end, c.start + 3.5), x: 0.5, y: 0.18, size: 0.072, font: 'Montserrat', bold: true, color: '#ffffff', stroke: '#000000', strokeW: 0.16, shadow: true, hook: true })] : [];
-  S.o.clip = { start: c.start, end: c.end, x: prev.x ?? 0.5, aspect: prev.aspect || '9:16', hook: prev.hook !== false, i };
+  // Series: a "PART n/total" badge for the whole short (removed with the hook when leaving the short).
+  const sr = S.o.series, part = sr && sr.on ? partOf(S.o.found, i, sr.order) : 0;
+  if (part) hook.push(newLayer({ text: partLabel(part, S.o.found.length, sr.name), start: c.start, end: c.end, x: 0.5, y: 0.07, size: 0.042, font: 'Montserrat', bold: true, color: '#111111', bg: '#FFE600', bgOp: 100, shadow: false, oneLine: true, hook: true, part: true }));
+  S.o.clip = { start: c.start, end: c.end, x: prev.x ?? 0.5, aspect: prev.aspect || '9:16', hook: prev.hook !== false, i, part };
   S.o.texts = [...others, ...hook];
   commit();
   renderClipUI(); renderTextUI(); timeline.renderNow(); timeline.scrollTo(c.start);
@@ -2331,6 +2335,9 @@ function renderClipUI() {
   const c = S.o.clip;
   $('clipActive').hidden = !c;
   $('clipAll').hidden = !(S.o.found && S.o.found.length > 1);
+  $('clipSeries').hidden = $('clipAll').hidden;
+  const sr = S.o.series || {};
+  $('seriesOn').checked = !!sr.on; if (document.activeElement !== $('seriesName')) $('seriesName').value = sr.name || ''; $('seriesOrder').value = sr.order || 'time';
   if (c) {
     $('clipRange').textContent = `${fmt(c.start)}–${fmt(c.end)} · ${Math.round(c.end - c.start)} s`;
     $('clipX').value = Math.round((c.x ?? 0.5) * 100); $('clipXVal').textContent = `${$('clipX').value}%`;
@@ -2379,8 +2386,10 @@ $('clipAll').onclick = async () => {
   if (!confirm(`Export all ${list.length} shorts one after another? Your browser may ask once to allow several downloads.`)) return;
   const was = S.o.clip;
   let done = 0;
-  for (let i = 0; i < list.length; i++) {
-    applyClip(i);
+  // A series exports in part order, so the downloads are numbered like the parts.
+  const order = S.o.series && S.o.series.on ? seriesOrder(list, S.o.series.order) : list.map((_, k) => k);
+  for (let i = 0; i < order.length; i++) {
+    applyClip(order[i]);
     const z = aspectSize(S.o.clip.aspect);
     $('exportTitle').textContent = `Exporting short ${i + 1} of ${list.length}…`;
     await exportVideo({ kind: 'video', size: { w: z.w, h: z.h, label: '' }, batch: `${i + 1}/${list.length}` });
@@ -2392,6 +2401,21 @@ $('clipAll').onclick = async () => {
   if (!was) exitClip();
 };
 $('clipExit').onclick = () => exitClip();
+const shortTag = range => (S.o.clip && S.o.clip.part ? `part-${S.o.clip.part}` : `short-${Math.round(range.start)}s`);
+const setSeries = p => {
+  S.o.series = { on: false, name: '', order: 'time', ...(S.o.series || {}), ...p };
+  if (S.o.clip) applyClip(S.o.clip.i); else { commit(); renderClipUI(); }
+};
+$('seriesOn').onchange = e => setSeries({ on: e.target.checked });
+$('seriesName').onchange = e => setSeries({ name: e.target.value.trim() });
+$('seriesOrder').onchange = e => setSeries({ order: e.target.value });
+$('seriesCaps').onclick = () => {
+  const sr = S.o.series || {};
+  const caps = seriesCaptions(S.o.found || [], { name: sr.name || '', order: sr.order || 'time' });
+  $('seriesOut').value = caps.map(c => `— Part ${c.part} —\n${c.text}`).join('\n\n');
+  $('seriesOut').hidden = false; $('seriesOut').select();
+  if (navigator.clipboard) navigator.clipboard.writeText($('seriesOut').value).then(() => toast('Captions copied. Paste each part’s caption when you post it.'), () => {});
+};
 $('clipExport').onclick = () => openExportDialog();
 $('clipX').addEventListener('input', e => { if (S.o.clip) { S.o.clip.x = e.target.value / 100; $('clipXVal').textContent = `${e.target.value}%`; } });
 $('clipX').addEventListener('change', () => commit());

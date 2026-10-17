@@ -38,3 +38,10 @@ test('calendar: 30 days, long videos on fixed days, shorts per week as asked', (
   assert.equal(week.filter(t => t.type === 'short').length, 5);
   assert.equal(milestones(150)[1].done, true);
 });
+
+test('AI script prompt: language, length, no invented facts', async () => {
+  const { buildPrompt } = await import('../../netlify/functions/script.mjs');
+  const p = buildPrompt({ title: 'SIP mistakes', niche: 'Finance', minutes: 8, lang: 'hindi' });
+  assert.match(p[0].content, /Devanagari/); assert.match(p[0].content, /Never invent statistics/);
+  assert.match(p[1].content, /8-minute script/);
+});
