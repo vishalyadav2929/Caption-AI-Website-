@@ -221,6 +221,16 @@
         <p class="clip-note" id="clipNote"></p>
         <div class="clip-list" id="clipList"></div>
         <button class="btn clip-all" id="clipAll" type="button" hidden>⬇ Export all shorts</button>
+        <div class="clip-series" id="clipSeries" hidden>
+          <label class="check"><input type="checkbox" id="seriesOn"> 📺 Make it a series (Insta / YouTube): “PART 1, 2, 3…” on each short</label>
+          <div class="row field">
+            <input id="seriesName" placeholder="Series name, e.g. Money Mistakes" aria-label="Series name">
+            <select id="seriesOrder" aria-label="Part order"><option value="time">Parts in video order</option><option value="score">Best short first</option></select>
+          </div>
+          <button class="btn btn-sm" id="seriesCaps" type="button">📋 Instagram captions for every part</button>
+          <small class="hint">Your own YouTube videos: download one from YouTube Studio, or all of them at once with Google Takeout (takeout.google.com → YouTube → videos).</small>
+          <textarea id="seriesOut" rows="8" readonly hidden aria-label="Captions for the series"></textarea>
+        </div>
       </div>
       <div class="panel-b" id="paneCaptions" role="tabpanel" hidden>
         <div class="status" id="status" role="status" aria-live="polite"></div>
