@@ -2,8 +2,8 @@
 // Network first (so every deploy shows up at once), falling back to the last copy saved here.
 // Only this site's own files are handled; the speech model is cached separately by transformers.js
 // (its cache is never touched here).
-const CACHE = 'vcz-v2';
-const SHELL = ['./', 'index.html', 'app.html', 'about.html', 'templates.html', 'privacy.html', 'css/styles.css', 'manifest.webmanifest', 'icons/icon-192.png'];
+const CACHE = 'vcz-v3';
+const SHELL = ['./', 'index.html', 'app.html', 'about.html', 'templates.html', 'design.html', 'privacy.html', 'css/styles.css', 'manifest.webmanifest', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));
@@ -15,6 +15,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   if (req.headers.get('range')) return; // video seeking: leave to the browser
+  if (new URL(req.url).pathname.includes('/pro/')) return; // the pro editors are large and keep their own storage
   e.respondWith((async () => {
     try {
       const res = await fetch(req);
