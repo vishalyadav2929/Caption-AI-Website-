@@ -282,12 +282,15 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   const maxW = W * clamp(tpl.maxWidth ?? 0.88, 0.3, 0.96);
 
   // Group entry animation.
-  const e = clamp((t - chunk.start) / 0.22);
-  let alpha = 1, gScale = 1, gx = 0, gy = 0;
+  const e = clamp((t - chunk.start) / (tpl.animDur || 0.22));
+  let alpha = 1, gScale = 1, gx = 0, gy = 0, gRot = 0;
   switch (tpl.anim) {
     case 'pop': gScale = 0.7 + 0.3 * easeOutBack(e); alpha = clamp(e * 3); break;
     case 'bounce': gy = (1 - easeOutBounce(e)) * px * 0.6; alpha = clamp(e * 3); break;
     case 'slide': gx = (1 - easeOut(e)) * -px * 0.6; alpha = easeOut(e); break;
+    case 'slide-right': gx = (1 - easeOut(e)) * px * 0.6; alpha = easeOut(e); break;
+    case 'drop': gy = (1 - easeOutBounce(e)) * -px * 0.8; alpha = clamp(e * 3); break;
+    case 'swing': gRot = (1 - easeOutBack(e)) * -0.35; alpha = clamp(e * 3); break;
     case 'rise': gy = (1 - easeOut(e)) * px * 0.5; alpha = easeOut(e); break;
     case 'zoom': gScale = 1.6 - 0.6 * easeOut(e); alpha = easeOut(e); break;
     case 'fade': alpha = easeOut(e); break;
@@ -385,10 +388,11 @@ export function drawCaption(ctx, W, H, chunk, t, tpl, opts = {}) {
   ctx.globalAlpha = alpha;
   ctx.translate(W / 2 + gx, cy + gy);
   ctx.scale(gScale, gScale);
+  if (gRot) ctx.rotate(gRot);
   if (tpl.rotate) ctx.rotate(tpl.rotate * Math.PI / 180);
   ctx.translate(-W / 2, -cy);
 
-  const reveal = tpl.reveal || (tpl.anim === 'type' ? 'type' : null);
+  const reveal = tpl.reveal === 'none' ? null : tpl.reveal || (tpl.anim === 'type' ? 'type' : null);
   const shown = it => !reveal || it.i <= active;
   const vis = items.filter(shown);
   const bx0 = Math.min(...(vis.length ? vis : items).map(it => it.x - it.width / 2));

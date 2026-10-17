@@ -229,6 +229,10 @@
             <div><label for="capFont">Font</label><select id="capFont"></select></div>
             <div><label for="capCase">Case</label><select id="capCase"></select></div>
           </div>
+          <div class="row field">
+            <div><label for="capAnim">Animation</label><select id="capAnim"></select></div>
+            <div><label for="capHiSel">Spoken word</label><select id="capHiSel"></select></div>
+          </div>
           <div class="field"><label for="capSize">Size <b id="capSizeVal"></b></label><input type="range" id="capSize" min="50" max="180" value="100"></div>
           <div class="row field cap-colors">
             <div class="color"><input type="color" id="capColor" aria-label="Caption text colour"> Text</div>
@@ -442,6 +446,18 @@
             <div class="color"><input type="color" id="bgColor" value="#000000" aria-label="Background colour"> Colour</div>
             <div><label for="bgOp">Opacity <b id="bgOpVal"></b></label><input type="range" id="bgOp" min="0" max="100" value="0"></div>
           </div>
+        </div>
+        <div class="group">
+          <h3>Animation</h3>
+          <div class="row field">
+            <div><label for="animSel">Entry</label><select id="animSel"><option value="">Style’s own</option><option value="none">None (no animation)</option><option value="fade">Fade</option><option value="pop">Pop</option><option value="bounce">Bounce</option><option value="slide">Slide from left</option><option value="slide-right">Slide from right</option><option value="rise">Rise up</option><option value="drop">Drop down</option><option value="zoom">Zoom out</option><option value="swing">Swing</option><option value="type">Typewriter</option></select></div>
+            <div><label for="animSpeed">Speed</label><select id="animSpeed"><option value="">Normal</option><option value="slow">Slow</option><option value="fast">Fast</option></select></div>
+          </div>
+          <div class="row field">
+            <div><label for="revealSel">Words appear</label><select id="revealSel"><option value="">Style’s own</option><option value="none">All words at once</option><option value="type">One by one</option><option value="blur">Blur in</option><option value="slam">Slam</option></select></div>
+            <div><label for="hiSel">Spoken word</label><select id="hiSel"><option value="">Style’s own</option><option value="none">None</option><option value="color">Colour</option><option value="box">Box</option><option value="scale">Grow</option><option value="karaoke">Karaoke</option></select></div>
+          </div>
+          <button class="btn btn-sm" id="animOff" type="button">⏸ Turn off all animation</button>
         </div>
         <div class="group">
           <h3>Layout</h3>

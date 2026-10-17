@@ -88,6 +88,11 @@ function tpl() {
   if (o.hiColor) { r.hiColor = o.hiColor; if (t.hi === 'none') r.hi = 'color'; }
   if (o.weight) r.weight = +o.weight;
   if (o.font) r.font = o.font;
+  // Animation overrides: entry, speed, how words appear, and the spoken-word highlight.
+  if (o.anim) r.anim = o.anim;
+  if (o.animSpeed) r.animDur = o.animSpeed === 'slow' ? 0.45 : 0.12;
+  if (o.reveal) r.reveal = o.reveal;
+  if (o.hi) { r.hi = o.hi; if (o.hi !== 'none' && !r.hiColor) r.hiColor = '#FFE600'; if (o.hi === 'box' && !r.boxText) r.boxText = '#111111'; }
   if (o.case) {
     r.upper = o.case === 'upper'; r.lower = o.case === 'lower'; r.title = false;
     if (r.roles) r.roles = r.roles.map(x => ({ ...x, upper: undefined, lower: undefined, title: undefined }));
@@ -316,6 +321,7 @@ function syncControls() {
   $('size').value = Math.round((o.scale || 1) * 100); $('sizeVal').textContent = `${$('size').value}%`;
   $('weight').value = o.weight || '';
   $('fontSel').value = o.font || '';
+  $('animSel').value = o.anim || ''; $('animSpeed').value = o.animSpeed || ''; $('revealSel').value = o.reveal || ''; $('hiSel').value = o.hi || '';
   syncCapStyle();
   $('caseSel').value = o.case || '';
   $('color').value = toHex(t.color);
@@ -344,6 +350,14 @@ bind('pos', el => { S.o.pos = el.value / 100; }, el => { $('posVal').textContent
 bind('maxW', el => { S.o.maxWidth = el.value / 100; }, el => { $('maxWVal').textContent = `${el.value}%`; });
 bind('lineGap', el => { S.o.lineGap = el.value / 100; }, el => { $('lineGapVal').textContent = (el.value / 100).toFixed(2); });
 bind('weight', el => { S.o.weight = el.value || null; });
+bind('animSel', el => { S.o.anim = el.value || null; });
+bind('animSpeed', el => { S.o.animSpeed = el.value || null; });
+bind('revealSel', el => { S.o.reveal = el.value || null; });
+bind('hiSel', el => { S.o.hi = el.value || null; });
+$('animOff').onclick = () => {
+  Object.assign(S.o, { anim: 'none', reveal: 'none', hi: 'none' });
+  syncControls(); commit(); toast('Animation off: captions just appear. Pick any animation to turn it back on.');
+};
 TEXT_FONTS.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; o.style.fontFamily = `'${f}'`; $('fontSel').appendChild(o); });
 bind('fontSel', el => { S.o.font = el.value || null; if (el.value && document.fonts) document.fonts.load(`700 40px '${el.value}'`, 'Aa अ').catch(() => {}); });
 
@@ -368,6 +382,7 @@ function syncCapStyle() {
   $('capTplName').textContent = baseTpl().name;
   $('capFont').value = S.o.font || '';
   $('capCase').value = S.o.case || '';
+  $('capAnim').value = S.o.anim || ''; $('capHiSel').value = S.o.hi || '';
   $('capSize').value = $('size').value; $('capSizeVal').textContent = `${$('size').value}%`;
   $('capColor').value = $('color').value; $('capHi').value = $('hiColor').value; $('capStroke').value = $('strokeColor').value;
   $('capTplStrip').querySelectorAll('.cap-tpl').forEach((b, i) => { const on = CAP_TPLS()[i].id === S.tplId; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
@@ -376,13 +391,14 @@ function syncCapStyle() {
 {
   $('capFont').innerHTML = $('fontSel').innerHTML.replace('Template font', 'Style’s font');
   $('capCase').innerHTML = $('caseSel').innerHTML;
+  $('capAnim').innerHTML = $('animSel').innerHTML; $('capHiSel').innerHTML = $('hiSel').innerHTML;
   // Each mirror control forwards to the real one, which applies the change and saves it.
   const mirror = (from, to) => {
     const send = type => { $(to).value = $(from).value; $(to).dispatchEvent(new Event(type)); };
     $(from).addEventListener('input', () => send('input'));
     $(from).addEventListener('change', () => { send('input'); send('change'); });
   };
-  [['capFont', 'fontSel'], ['capCase', 'caseSel'], ['capSize', 'size'], ['capColor', 'color'], ['capHi', 'hiColor'], ['capStroke', 'strokeColor']].forEach(([a, b]) => mirror(a, b));
+  [['capFont', 'fontSel'], ['capCase', 'caseSel'], ['capAnim', 'animSel'], ['capHiSel', 'hiSel'], ['capSize', 'size'], ['capColor', 'color'], ['capHi', 'hiColor'], ['capStroke', 'strokeColor']].forEach(([a, b]) => mirror(a, b));
   $('capSize').addEventListener('input', () => { $('capSizeVal').textContent = `${$('capSize').value}%`; });
   $('capAllStyles').onclick = () => { S.styleFor = 'cap'; showLTab('tpl'); };
   $('capMoreType').onclick = () => showRTab('style');
