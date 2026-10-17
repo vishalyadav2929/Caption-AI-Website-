@@ -2,8 +2,8 @@
 // Network first (so every deploy shows up at once), falling back to the last copy saved here.
 // Only this site's own files are handled; the speech model is cached separately by transformers.js
 // (its cache is never touched here).
-const CACHE = 'vcz-v3';
-const SHELL = ['./', 'index.html', 'app.html', 'about.html', 'templates.html', 'design.html', 'privacy.html', 'css/styles.css', 'manifest.webmanifest', 'icons/icon-192.png'];
+const CACHE = 'vcz-v4';
+const SHELL = ['./', 'index.html', 'app.html', 'about.html', 'templates.html', 'design.html', 'grow.html', 'privacy.html', 'css/styles.css', 'manifest.webmanifest', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));

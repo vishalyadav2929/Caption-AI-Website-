@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YouTube Growth Planner — ViralCaptionZone</title>
+  <meta name="description" content="Free YouTube growth planner for Indian creators: check your title, get 30 video ideas, retention-first scripts, thumbnails, a Shorts plan, a 30-day calendar and the Partner Program path.">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b0b12">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    body.gr { background: #0b0b12; color: #ececf1; font-family: Inter, system-ui, sans-serif; margin: 0; }
+    .gr-main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 80px; }
+    .gr-top { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .gr-top a { color: #c9c9d6; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .gr-hero { padding: 32px 24px; border-radius: 20px; background: linear-gradient(135deg, #3b0d0d, #1d1440 55%, #0b2a2c); }
+    .gr-hero h1 { margin: 0 0 8px; font-size: clamp(26px, 4vw, 40px); }
+    .gr-hero p { margin: 0 0 18px; color: #c4c4d4; max-width: 720px; }
+    .gr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+    .gr-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #a3a3b8; }
+    .gr-form input, .gr-form select { background: #14141d; border: 1px solid #2b2b3a; color: #fff; border-radius: 10px; padding: 10px; font-size: 15px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+    .gr-form .wide { grid-column: 1 / -1; }
+    .gr-go { margin-top: 14px; padding: 12px 22px; border: 0; border-radius: 12px; background: linear-gradient(90deg, #ef4444, #a855f7); color: #fff; font-weight: 800; font-size: 16px; cursor: pointer; }
+    .gr-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 26px 0 14px; }
+    .gr-tabs button { border: 1px solid #2b2b3a; background: #14141d; color: #c9c9d6; padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; }
+    .gr-tabs button.on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .gr-card { background: #14141d; border: 1px solid #23232f; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+    .gr-card h3 { margin: 0 0 8px; font-size: 17px; }
+    .gr-card p, .gr-card li { color: #c4c4d4; line-height: 1.55; }
+    .gr-idea { display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; align-items: center; }
+    .gr-idea small { color: #8b8ba3; }
+    .gr-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .gr-btns a, .gr-btns button { font-size: 13px; padding: 7px 10px; border-radius: 9px; border: 1px solid #33334a; background: #1b1b27; color: #fff; text-decoration: none; cursor: pointer; font-weight: 600; }
+    .gr-link { display: flex; gap: 14px; align-items: flex-start; }
+    .gr-link img { width: 220px; max-width: 40%; border-radius: 10px; }
+    .gr-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .gr-day { background: #14141d; border: 1px solid #23232f; border-radius: 10px; padding: 8px; min-height: 70px; font-size: 12px; }
+    .gr-day b { display: block; color: #8b8ba3; margin-bottom: 4px; }
+    .gr-day .long { color: #fca5a5; } .gr-day .short { color: #a5b4fc; }
+    .gr-note { color: #8b8ba3; font-size: 13px; }
+    .ok { color: #4ade80; } .warn { color: #fbbf24; }
+    @media (max-width: 700px) { .gr-cal { grid-template-columns: repeat(2, 1fr); } .gr-link { flex-direction: column; } .gr-link img { max-width: 100%; } .gr-idea { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body class="gr">
+  <main class="gr-main">
+    <nav class="gr-top"><a href="app.html">← Studio</a><a href="design.html">🎨 Design studio</a><a href="app.html" id="toClips">🎞 Long video → Shorts</a></nav>
+    <section class="gr-hero">
+      <h1>📈 YouTube Growth Planner</h1>
+      <p>Paste a video link to check its title and thumbnail, or start from zero. You get a strategy, 30 video ideas with titles and thumbnails, retention-first scripts, a Shorts plan, a 30-day calendar and the Partner Program path.</p>
+      <form class="gr-form" id="form">
+        <label class="wide">YouTube video link (optional)<input id="url" type="url" placeholder="https://youtu.be/…" inputmode="url"></label>
+        <label>Category<select id="niche"></select></label>
+        <label>Your topic (optional)<input id="topic" placeholder="e.g. SIP for students"></label>
+        <label>Subscribers now<input id="subs" type="number" min="0" value="0"></label>
+        <label>Long videos / week<select id="lpw"><option>1</option><option selected>2</option><option>3</option></select></label>
+        <label>Shorts / week<select id="spw"><option>3</option><option selected>5</option><option>7</option><option>14</option></select></label>
+        <label>Video length<select id="mins"><option value="6">6 min</option><option value="8">8 min</option><option value="10" selected>10 min</option><option value="15">15 min</option></select></label>
+      </form>
+      <button class="gr-go" id="go" type="button">✨ Make my plan</button>
+    </section>
+    <div id="out" hidden>
+      <div class="gr-tabs" id="tabs" role="tablist"></div>
+      <div id="panes"></div>
+    </div>
+  </main>
+<script type="module">
+  import { NICHES, youtubeId, titleCheck, scriptOutline, ideas, calendar, milestones } from './js/grow.js';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  for (const [k, n] of Object.entries(NICHES)) $('niche').add(new Option(n.name, k));
+  try { const s = JSON.parse(localStorage.getItem('vcz-grow') || '{}'); for (const k of ['niche', 'topic', 'subs', 'lpw', 'spw', 'mins']) if (s[k] != null) $(k).value = s[k]; } catch { /* no storage */ }
+  const design = (layout, text) => `app.html#design=yt&layout=${layout}&text=${encodeURIComponent(text)}`;
+  const TABS = [['link', '🔗 Your video'], ['strategy', '🧭 Strategy'], ['ideas', '💡 30 ideas'], ['script', '📝 Script'], ['calendar', '📅 30 days'], ['money', '💰 Monetization']];
+  let state = {};
+  function show(id) {
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+    document.querySelectorAll('#panes > section').forEach(p => { p.hidden = p.dataset.id !== id; });
+  }
+  async function linkPane() {
+    const id = youtubeId($('url').value);
+    if (!$('url').value.trim()) return '<div class="gr-card"><p>No link pasted. Paste one above to check a video’s title and thumbnail.</p></div>';
+    if (!id) return '<div class="gr-card"><p class="warn">That doesn’t look like a YouTube video link.</p></div>';
+    let meta = null;
+    try { const r = await fetch(`/api/yt?url=${encodeURIComponent($('url').value)}`); if (r.ok) meta = await r.json(); } catch { /* offline or local */ }
+    const title = meta ? meta.title : '';
+    const chk = title ? titleCheck(title) : null;
+    return `<div class="gr-card gr-link"><img src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="Thumbnail of the video">
+      <div><h3>${title ? esc(title) : 'Title not available here'}</h3>${meta ? `<small>${esc(meta.channel)}</small>` : '<p class="gr-note">Couldn’t read the title (private video, or the site isn’t online). Type it in “Your topic” to plan around it.</p>'}
+      ${chk ? (chk.ok ? '<p class="ok">✓ Title looks well packaged.</p>' : `<ul>${chk.tips.map(t => `<li class="warn">${esc(t)}</li>`).join('')}</ul>`) : ''}
+      <div class="gr-btns"><a href="${design(NICHES[$('niche').value].layout, (title || 'YOUR TITLE').split(' ').slice(0, 4).join(' ').toUpperCase())}">🎨 Make a new thumbnail</a><a href="app.html" class="clipsLink">🎞 Cut Shorts from it</a></div>
+      <p class="gr-note">To cut Shorts, download your own video from YouTube Studio (Content → ⋮ → Download) and upload it in Long video → Shorts. We don’t download videos from YouTube links: YouTube’s terms don’t allow it.</p></div></div>`;
+  }
+  async function render() {
+    const f = { niche: $('niche').value, topic: $('topic').value, subs: +$('subs').value || 0, lpw: +$('lpw').value, spw: +$('spw').value, mins: +$('mins').value };
+    try { localStorage.setItem('vcz-grow', JSON.stringify(f)); } catch { /* no storage */ }
+    const n = NICHES[f.niche], list = ideas(f.niche, f.topic, 30);
+    state = { f, n, list };
+    const sec = (id, html) => `<section data-id="${id}" hidden>${html}</section>`;
+    const strategy = `<div class="gr-card"><h3>Your 3 content pillars</h3><ul>${n.pillars.map(p => `<li><b>${esc(p)}</b>: one playlist each, so one video leads to the next.</li>`).join('')}</ul></div>
+      <div class="gr-card"><h3>The weekly loop</h3><ul>
+        <li><b>${f.lpw} long video${f.lpw > 1 ? 's' : ''} a week</b>, ${f.mins} min, same days every week. Pick the title and thumbnail <i>before</i> filming.</li>
+        <li><b>${f.spw} Shorts a week</b> cut from those videos (Long video → Shorts), each pointing to the full video.</li>
+        <li>First 30 seconds pay off the title. A new reason to keep watching every 60–90 s. No padding: shorter and tight beats long and slow.</li>
+        <li>End every video by sending people to the next one (end screen + playlist).</li></ul></div>
+      <div class="gr-card"><h3>Read these 3 numbers in YouTube Studio after 48 hours</h3><ul>
+        <li><b>Click-through rate</b> low → change the title or thumbnail (packaging).</li>
+        <li><b>Retention at 30 seconds</b> low → the opening doesn’t match the promise.</li>
+        <li><b>Average % viewed</b> low → cut slow parts; re-hook more often.</li></ul>
+        <p class="gr-note">Change one thing at a time. YouTube Studio’s “Test & compare” can test thumbnails for you.</p></div>`;
+    const ideaHtml = list.map((x, i) => `<div class="gr-card gr-idea"><div><b>${i + 1}. ${esc(x.title)}</b><br><small>${esc(x.pillar)} · thumbnail: “${esc(x.thumbText)}” · Shorts: ${x.shorts.map(esc).join(' / ')}</small></div>
+      <div class="gr-btns"><button type="button" data-script="${i}">📝 Script</button><a href="${design(x.layout, x.thumbText)}">🎨 Thumbnail</a></div></div>`).join('');
+    const cal = calendar(list, f.lpw, f.spw);
+    const calHtml = `<div class="gr-cal">${cal.map(d => `<div class="gr-day"><b>Day ${d.day}</b>${d.tasks.map(t => `<div class="${t.type}">${t.type === 'long' ? '▶ ' : '⚡ '}${esc(t.text)}</div>`).join('') || '<span class="gr-note">Reply to comments</span>'}</div>`).join('')}</div>`;
+    const ms = milestones(f.subs);
+    const money = `<div class="gr-card"><h3>The honest path</h3><p>No one can promise monetization in 10 days. The Partner Program needs watch hours or Shorts views earned over months, and YouTube reviews every channel for original content. Bought views or re-uploaded content get channels rejected. What works: the weekly loop, every week, for 3–6 months.</p></div>
+      ${ms.map(m => `<div class="gr-card"><h3>${m.done ? '✅' : '⬜'} ${esc(m.goal)}</h3><p>${esc(m.detail)}</p></div>`).join('')}
+      <p class="gr-note">Thresholds can differ by country and change over time; check “YouTube Partner Program overview & eligibility” on YouTube Help.</p>`;
+    $('panes').innerHTML = sec('link', await linkPane()) + sec('strategy', strategy) + sec('ideas', ideaHtml) + sec('script', '<div id="scriptBox"></div>') + sec('calendar', calHtml) + sec('money', money);
+    $('tabs').innerHTML = TABS.map(([id, name]) => `<button type="button" role="tab" data-id="${id}">${name}</button>`).join('');
+    $('out').hidden = false;
+    script(0);
+    show($('url').value.trim() ? 'link' : 'strategy');
+  }
+  function script(i) {
+    const x = state.list[i], next = state.list[i + 1] ? `“${state.list[i + 1].title}”` : 'your next video';
+    const s = scriptOutline(x.title, state.f.mins, next);
+    $('scriptBox').innerHTML = `<div class="gr-card"><h3>📝 ${esc(x.title)}</h3><p class="gr-note">Thumbnail text: “${esc(x.thumbText)}” · ${state.f.mins} min · Shorts to cut: ${x.shorts.map(esc).join(' / ')}</p>
+      <ol>${s.parts.map(p => `<li><b>${p.at} · ${esc(p.what)}</b><br>${esc(p.say)}</li>`).join('')}</ol>
+      <h3>Description</h3><textarea readonly rows="9" style="width:100%;background:#0b0b12;color:#ddd;border:1px solid #2b2b3a;border-radius:10px;padding:10px" id="desc">${esc(s.description)}</textarea>
+      <div class="gr-btns"><button type="button" id="copyDesc">Copy description</button><a href="${design(x.layout, x.thumbText)}">🎨 Make the thumbnail</a></div></div>`;
+    $('copyDesc').onclick = () => navigator.clipboard && navigator.clipboard.writeText($('desc').value);
+  }
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) show(b.dataset.id); });
+  $('panes').addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) { script(+b.dataset.script); show('script'); } });
+  $('go').onclick = () => render();
+  $('url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); render(); } });
+</script>
+</body>
+</html>
