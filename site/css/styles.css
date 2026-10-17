@@ -1035,3 +1035,4 @@ body.design #ltabClips, body.design #tabCaptions, body.design #ltabSnd, body.des
 .ls-card img { width: 140px; border-radius: 8px; }
 .ls-steps, .ls-tips { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
 .ls-tips li { color: #fbbf24; }
+.ls-studio { text-align: center; }
