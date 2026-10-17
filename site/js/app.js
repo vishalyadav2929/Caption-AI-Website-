@@ -2986,8 +2986,13 @@ loadTemplateFonts();
 if (location.hash === '#live') { openEditor(); setMode('live'); }
 {
   // Design studio links: app.html#design=yt&layout=big-bold opens a new design of that size.
-  const m = location.hash.match(/^#design=([a-z]+)(?:&layout=([a-z-]+))?/);
-  if (m) { history.replaceState(null, '', location.pathname); openEditor(); blankDesign(m[1], m[2]); }
+  const m = location.hash.match(/^#design=([a-z]+)(?:&layout=([a-z-]+))?(?:&text=([^&]*))?/);
+  if (m) {
+    history.replaceState(null, '', location.pathname); openEditor();
+    // An optional headline (from the growth planner) replaces the layout's first text.
+    const text = m[3] ? decodeURIComponent(m[3]).slice(0, 80) : '';
+    blankDesign(m[1], m[2]).then(() => { if (text && texts()[0]) { texts()[0].text = text; commit(); renderTextUI(); } });
+  }
 }
 requestAnimationFrame(loop);
 

@@ -1328,6 +1328,36 @@ await step('caption animation: pick another entry, or turn all animation off (ca
   await ctx.close();
 });
 
+await step('YouTube growth planner: link check, 30 ideas, script, calendar, thumbnail opens a design with the text', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.route('**/api/yt?*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ id: 'dQw4w9WgXcQ', title: 'MY VLOG #vlog', channel: 'Test', thumbnail: '' }) }));
+  await m.route('https://i.ytimg.com/**', r => r.fulfill({ status: 404, body: '' }));
+  await m.goto(`${BASE}/grow.html`);
+  await m.fill('#url', 'https://youtu.be/dQw4w9WgXcQ');
+  await m.selectOption('#niche', 'finance');
+  await m.fill('#topic', 'SIP for students');
+  await m.click('#go');
+  await m.waitForSelector('#out:not([hidden])');
+  assert.match(await m.textContent('section[data-id="link"]'), /Hashtags in the title/);
+  await m.click('#tabs button[data-id="ideas"]');
+  assert.equal(await m.locator('section[data-id="ideas"] .gr-card').count(), 30);
+  assert.match(await m.textContent('section[data-id="ideas"] .gr-card >> nth=0'), /SIP for students/i);
+  await m.locator('[data-script="2"]').click();
+  assert.match(await m.inputValue('#desc'), /Chapters\n0:00 Cold open/);
+  await m.click('#tabs button[data-id="calendar"]');
+  assert.equal(await m.locator('.gr-day').count(), 30);
+  await m.click('#tabs button[data-id="money"]');
+  assert.match(await m.textContent('section[data-id="money"]'), /No one can promise monetization in 10 days/);
+  await m.click('#tabs button[data-id="ideas"]');
+  await m.locator('section[data-id="ideas"] a:has-text("Thumbnail")').first().click();
+  await m.waitForFunction(() => window.__vcz && window.__vcz.S.image && window.__vcz.S.o.texts.length, null, { timeout: 15000 });
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].text), '30 DAYS LATER');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

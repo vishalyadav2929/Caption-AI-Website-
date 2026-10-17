@@ -1016,3 +1016,4 @@ body.design #ltabClips, body.design #tabCaptions, body.design #ltabSnd, body.des
 .st-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
 .st-btn { font-size: 22px; padding: 4px 0; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; }
 .st-btn:hover, .el-btn:hover { border-color: var(--accent); }
+.clip-grow { display: block; margin: 8px 0; font-size: 13px; }
