@@ -998,3 +998,21 @@ body.warping .intro-copy { transition: transform .7s ease-in, opacity .7s ease-i
 .style-for-row .seg-ctl { flex: 1; min-width: 180px; }
 .style-for-row .seg-ctl button { padding: 6px 8px; white-space: nowrap; }
 #txtAnim { flex: 1; min-width: 0; }
+
+/* Caption style, right in the Captions panel (above the language) */
+.cap-style { border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin: 8px 0 12px; }
+.cap-style-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.cap-style-h span { font-size: 12px; opacity: .7; }
+.cap-tpl-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; scrollbar-width: thin; }
+.cap-tpl { flex: 0 0 auto; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: #111; color: #fff; font-size: 14px; cursor: pointer; white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.cap-tpl.on { outline: 2px solid var(--accent); border-color: var(--accent); }
+.cap-colors { flex-wrap: wrap; gap: 10px; }
+.cap-style .row .link { font-size: 12px; }
+
+/* Design mode (a photo with a design size): only the tools a design needs */
+body.design #ltabClips, body.design #tabCaptions, body.design #ltabSnd, body.design #tabStyle { display: none; }
+.el-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.el-btn { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card, #16161f); color: inherit; cursor: pointer; font-size: 15px; }
+.st-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.st-btn { font-size: 22px; padding: 4px 0; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; }
+.st-btn:hover, .el-btn:hover { border-color: var(--accent); }

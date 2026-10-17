@@ -87,6 +87,7 @@ function tpl() {
   if (o.color) r.color = o.color;
   if (o.hiColor) { r.hiColor = o.hiColor; if (t.hi === 'none') r.hi = 'color'; }
   if (o.weight) r.weight = +o.weight;
+  if (o.font) r.font = o.font;
   if (o.case) {
     r.upper = o.case === 'upper'; r.lower = o.case === 'lower'; r.title = false;
     if (r.roles) r.roles = r.roles.map(x => ({ ...x, upper: undefined, lower: undefined, title: undefined }));
@@ -115,6 +116,8 @@ function commit() {
   hist.push(s);
   if (hist.length > 100) hist.shift();
   hIdx = hist.length - 1;
+  document.body.classList.toggle('design', !!(S.image && S.o.frame));
+  if (typeof syncActions === 'function') syncActions();
   syncUndo();
   scheduleSave();
 }
@@ -181,15 +184,20 @@ const gallery = mountGallery({
       addText();
       return toast(`“${t.name}” chosen. Type your text: it appears in this style.`, 4500);
     }
-    S.tplId = t.id;
-    if (S.file && !S.image && !S.segments.length && !genRunning) toast(`“${t.name}” set for captions. Open Captions and press ✨ Make captions.`, 4500);
-    // Style overrides belong to the old template. Captions are untouched: each template shows long captions
-    // in pieces of its own size at render time (e.g. one word at a time for "Pill").
-    S.o = keepO();
-    syncControls(); renderSegs(); commit();
+    applyCaptionTpl(t);
   },
 });
 
+function applyCaptionTpl(t) {
+  if (document.fonts) document.fonts.load(fontString(t, 40), 'Aa अ').catch(() => {});
+  S.tplId = t.id;
+  gallery.select(t.id);
+  if (S.file && !S.image && !S.segments.length && !genRunning) toast(`“${t.name}” set for captions. Press ✨ Make captions in Captions.`, 4500);
+  // Style overrides belong to the old template. Captions are untouched: each template shows long captions
+  // in pieces of its own size at render time (e.g. one word at a time for "Pill").
+  S.o = keepO();
+  syncControls(); renderSegs(); commit();
+}
 /** Where a picked style goes: 'cap' (captions) or 'text'. The visitor can choose; otherwise it's guessed. */
 function styleTarget() {
   if (S.image) return 'text';
@@ -307,6 +315,8 @@ function syncControls() {
   if (typeof syncGradeControls === 'function') syncGradeControls();
   $('size').value = Math.round((o.scale || 1) * 100); $('sizeVal').textContent = `${$('size').value}%`;
   $('weight').value = o.weight || '';
+  $('fontSel').value = o.font || '';
+  syncCapStyle();
   $('caseSel').value = o.case || '';
   $('color').value = toHex(t.color);
   $('hiColor').value = toHex(t.hiColor || '#FFE600');
@@ -334,6 +344,50 @@ bind('pos', el => { S.o.pos = el.value / 100; }, el => { $('posVal').textContent
 bind('maxW', el => { S.o.maxWidth = el.value / 100; }, el => { $('maxWVal').textContent = `${el.value}%`; });
 bind('lineGap', el => { S.o.lineGap = el.value / 100; }, el => { $('lineGapVal').textContent = (el.value / 100).toFixed(2); });
 bind('weight', el => { S.o.weight = el.value || null; });
+TEXT_FONTS.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; o.style.fontFamily = `'${f}'`; $('fontSel').appendChild(o); });
+bind('fontSel', el => { S.o.font = el.value || null; if (el.value && document.fonts) document.fonts.load(`700 40px '${el.value}'`, 'Aa अ').catch(() => {}); });
+
+// The captions panel has the main caption style controls too (above the language), so styling
+// captions doesn't need another panel. They drive the same controls as the Caption style tab.
+function CAP_TPLS() { return TEMPLATES.filter(t => !t.none).slice(0, 16); }
+function renderCapTpls() {
+  const strip = $('capTplStrip'); strip.innerHTML = '';
+  for (const t of CAP_TPLS()) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'cap-tpl' + (t.id === S.tplId ? ' on' : '');
+    b.setAttribute('role', 'option'); b.setAttribute('aria-selected', t.id === S.tplId);
+    b.textContent = t.name; b.style.fontFamily = `'${t.font}'`; b.style.fontWeight = t.weight || 700;
+    b.style.color = toHex(t.color) === '#ffffff' ? '' : t.color;
+    b.onclick = () => { S.styleFor = 'cap'; applyCaptionTpl(t); };
+    strip.appendChild(b);
+  }
+}
+function syncCapStyle() {
+  if (!$('capStyle')) return;
+  $('capStyle').hidden = !S.file || !!S.image || S.mode !== 'file';
+  const t = tpl();
+  $('capTplName').textContent = baseTpl().name;
+  $('capFont').value = S.o.font || '';
+  $('capCase').value = S.o.case || '';
+  $('capSize').value = $('size').value; $('capSizeVal').textContent = `${$('size').value}%`;
+  $('capColor').value = $('color').value; $('capHi').value = $('hiColor').value; $('capStroke').value = $('strokeColor').value;
+  $('capTplStrip').querySelectorAll('.cap-tpl').forEach((b, i) => { const on = CAP_TPLS()[i].id === S.tplId; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  void t;
+}
+{
+  $('capFont').innerHTML = $('fontSel').innerHTML.replace('Template font', 'Style’s font');
+  $('capCase').innerHTML = $('caseSel').innerHTML;
+  // Each mirror control forwards to the real one, which applies the change and saves it.
+  const mirror = (from, to) => {
+    const send = type => { $(to).value = $(from).value; $(to).dispatchEvent(new Event(type)); };
+    $(from).addEventListener('input', () => send('input'));
+    $(from).addEventListener('change', () => { send('input'); send('change'); });
+  };
+  [['capFont', 'fontSel'], ['capCase', 'caseSel'], ['capSize', 'size'], ['capColor', 'color'], ['capHi', 'hiColor'], ['capStroke', 'strokeColor']].forEach(([a, b]) => mirror(a, b));
+  $('capSize').addEventListener('input', () => { $('capSizeVal').textContent = `${$('capSize').value}%`; });
+  $('capAllStyles').onclick = () => { S.styleFor = 'cap'; showLTab('tpl'); };
+  $('capMoreType').onclick = () => showRTab('style');
+}
+renderCapTpls();
 bind('caseSel', el => { S.o.case = el.value || null; });
 bind('color', el => { S.o.color = el.value; });
 bind('hiColor', el => { S.o.hiColor = el.value; });
@@ -862,6 +916,7 @@ function renderSegs() {
   S.active = -1;
   $('segCount').textContent = S.segments.length ? `· ${S.segments.length}` : '';
   $('capBar').hidden = !S.segments.length; // language + words-on-screen only matter once there are captions
+  syncCapStyle();
   if (!S.segments.length) {
     const p = document.createElement('div'); p.className = 'empty';
     p.innerHTML = '<strong>No captions yet</strong>';
@@ -984,6 +1039,7 @@ function syncActions() {
   const has = S.segments.length > 0;
   $('srtBtn').disabled = !has || S.exporting;
   $('exportBtn').disabled = S.exporting || !(S.file && S.mode === 'file');
+  $('exportBtn').textContent = S.image ? (S.o.frame ? 'Download design' : 'Download photo') : 'Export video';
   $('genBtn').disabled = !S.file || !!S.image || S.exporting || genRunning;
 }
 
@@ -1019,8 +1075,9 @@ async function loadImage(file) {
   $('time').textContent = 'Photo';
   renderSegs(); syncActions(); refreshLookThumbs();
   if (S.wantThumb) {
-    S.wantThumb = false;
-    setFrame(); commit(); showLTab('thumb');
+    const want = S.wantThumb; S.wantThumb = false;
+    setFrame(want.size); commit(); showLTab('thumb');
+    if (want.layout) applyThumb(want.layout);
   } else if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); showRTab('text'); }
   renderMedia(); updateThumbBg();
   if (!opening) createProject(file, 'photo');
@@ -2407,6 +2464,50 @@ async function frameToPhoto() {
   await importFiles([new File([blob], name, { type: 'image/jpeg' })]);
   return !!S.image;
 }
+/** A new empty design (gradient background) of a given size, optionally with a starter layout. */
+async function blankDesign(sizeId, layout) {
+  const z = SIZES.find(x => x.id === sizeId) || SIZES[0];
+  const c = document.createElement('canvas'); c.width = z.w; c.height = z.h;
+  const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, z.w, z.h);
+  g.addColorStop(0, '#3b2a66'); g.addColorStop(1, '#0d0d16');
+  x.fillStyle = g; x.fillRect(0, 0, z.w, z.h);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  S.wantThumb = { size: z.id, layout };
+  await importFiles([new File([blob], `design-${z.id}.png`, { type: 'image/png' })]);
+}
+/** Swap the photo under a design and keep every text, overlay and the size. */
+async function replacePhoto(file) {
+  const url = URL.createObjectURL(file), img = new Image();
+  const ok = await new Promise(r => { img.onload = () => r(true); img.onerror = () => r(false); img.src = url; });
+  if (!ok) { URL.revokeObjectURL(url); return toast('This browser can’t open that photo.'); }
+  if (S.fileURL) URL.revokeObjectURL(S.fileURL);
+  S.fileURL = url; S.file = file; S.image = img;
+  if (S.o.frame) S.o.frame = { ...S.o.frame, x: 0.5, y: 0.5 };
+  commit(); updateThumbBg(); renderThumbUI();
+  toast('Photo replaced. Drag it on the preview to move it.');
+}
+// Ready-made elements: text presets and stickers, all ordinary editable texts.
+const ELEMENTS = [
+  ['Heading', { text: 'BIG HEADING', font: 'Anton', size: 0.12, strokeW: 0.1 }],
+  ['Subheading', { text: 'Subheading goes here', font: 'Montserrat', size: 0.06 }],
+  ['Body', { text: 'A line of small text', font: 'Inter', bold: false, size: 0.04 }],
+  ['Badge', { text: 'NEW', font: 'Montserrat', size: 0.05, color: '#111111', bg: '#FFE600', bgOp: 100, shadow: false }],
+  ['Red tag', { text: 'MUST WATCH', font: 'Montserrat', size: 0.05, bg: '#E11D48', bgOp: 100, shadow: false }],
+  ['Script', { text: 'my story', font: 'Pacifico', bold: false, size: 0.08 }],
+];
+const STICKERS = ['🔥', '😱', '🤯', '✅', '❌', '➡️', '👉', '💰', '⭐', '👀', '❤️', '💯', '🚀', '⚠️', '🎯', '😂'];
+function addElement(o) {
+  const L = newLayer({ start: 0, end: S.image ? 1 : 3, y: 0.3 + (texts().length % 5) * 0.1, ...o });
+  S.o.texts = [...texts(), L]; commit(); selectText(L.id);
+}
+{
+  const box = $('thumbElements');
+  for (const [name, o] of ELEMENTS) { const b = document.createElement('button'); b.type = 'button'; b.className = 'el-btn'; b.textContent = name; b.style.fontFamily = `'${o.font}'`; b.onclick = () => addElement(o); box.appendChild(b); }
+  const st = $('thumbStickers');
+  for (const e of STICKERS) { const b = document.createElement('button'); b.type = 'button'; b.className = 'st-btn'; b.textContent = e; b.setAttribute('aria-label', `Add ${e}`); b.onclick = () => addElement({ text: e, size: 0.14, shadow: false, x: 0.75, y: 0.25 }); st.appendChild(b); }
+  $('thumbReplaceIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) replacePhoto(f); };
+  document.querySelectorAll('[data-blank]').forEach(b => b.addEventListener('click', () => { openEditor(); blankDesign(b.dataset.blank); }));
+}
 async function applyThumb(id) {
   const tp = THUMBS.find(x => x.id === id); if (!tp) return;
   if (!S.image && !(await frameToPhoto())) return toast('Upload a photo or load a video first.');
@@ -2426,7 +2527,6 @@ $('thumbOverlay').onchange = e => { S.o.overlay = e.target.value === 'none' ? nu
 $('thumbOvColor').addEventListener('input', e => { if (S.o.overlay) S.o.overlay.color = e.target.value; });
 $('thumbOvColor').addEventListener('change', () => commit());
 $('thumbExport').onclick = () => exportPhoto();
-['cardThumb', 'navThumb'].forEach(id => $(id).addEventListener('click', () => { S.wantThumb = true; }));
 
 // ---------- media library: several files, each its own saved project ----------
 /** Import files: the first opens in the editor, the rest wait in the media library. */
@@ -2868,6 +2968,11 @@ commit();
 status('Upload a video to get started.');
 loadTemplateFonts();
 if (location.hash === '#live') { openEditor(); setMode('live'); }
+{
+  // Design studio links: app.html#design=yt&layout=big-bold opens a new design of that size.
+  const m = location.hash.match(/^#design=([a-z]+)(?:&layout=([a-z-]+))?/);
+  if (m) { history.replaceState(null, '', location.pathname); openEditor(); blankDesign(m[1], m[2]); }
+}
 requestAnimationFrame(loop);
 
 // Exposed for automated end-to-end tests only.

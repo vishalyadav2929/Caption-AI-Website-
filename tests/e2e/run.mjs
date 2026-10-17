@@ -1245,6 +1245,53 @@ await step('long video → ~30 s shorts: Export all saves every short', async ()
   await ctx.close();
 });
 
+await step('design studio: separate home, template opens a sized design, stickers, replace photo keeps the text', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/design.html`);
+  assert.equal(await m.locator('.ds-tpl').count(), 10);
+  await m.click('#tabs button:has-text("Pinterest pin")');
+  await m.locator('.ds-tpl', { hasText: 'Money' }).click();
+  await m.waitForFunction(() => window.__vcz && window.__vcz.S.image && window.__vcz.S.o.texts.length === 2, null, { timeout: 15000 });
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.frame.id), 'pin');
+  const [pw, ph] = await m.evaluate(() => [document.getElementById('stage').width, document.getElementById('stage').height]);
+  assert.ok(Math.abs(pw / ph - 1000 / 1500) < 0.01, `preview is 2:3: ${pw}x${ph}`);
+  assert.equal(await m.isVisible('#tabCaptions'), false, 'video-only tools hidden in a design');
+  assert.equal(await m.textContent('#exportBtn'), 'Download design');
+  await m.click('#ltabThumb');
+  await m.locator('.st-btn', { hasText: '🔥' }).click();
+  await m.locator('.el-btn', { hasText: 'Badge' }).click();
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 4);
+  await m.click('#ltabThumb');
+  await m.setInputFiles('#thumbReplaceIn', join(FIX, 'photo.jpg'));
+  await m.waitForFunction(() => /photo/.test(window.__vcz.S.file.name));
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts.length), 4, 'texts kept after replacing the photo');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.frame.id), 'pin');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('captions panel has the caption style: style strip, font, size, colours', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('#tabCaptions');
+  assert.equal(await m.isVisible('#capStyle'), true);
+  await m.locator('.cap-tpl', { hasText: 'Spark' }).click();
+  await m.selectOption('#capFont', 'Bangers');
+  await m.selectOption('#capCase', 'upper');
+  assert.deepEqual(await m.evaluate(() => [window.__vcz.S.tplId, window.__vcz.S.o.font, window.__vcz.S.o.case, window.__vcz.tpl().font]), ['spark', 'Bangers', 'upper', 'Bangers']);
+  assert.equal(await m.inputValue('#fontSel'), 'Bangers', 'the Caption style tab shows the same font');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design Studio — ViralCaptionZone</title>
+  <meta name="description" content="Free design studio for creators: YouTube thumbnails, Reels covers, Pinterest pins and Instagram posts. Templates, text, stickers and photo editing in your browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link id="fonts" rel="stylesheet">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b0b12">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    body.ds { background: #0b0b12; color: #ececf1; font-family: Inter, system-ui, sans-serif; margin: 0; }
+    .ds-wrap { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+    .ds-side { border-right: 1px solid #23232f; padding: 18px 14px; position: sticky; top: 0; height: 100vh; box-sizing: border-box; }
+    .ds-side a { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; color: #c9c9d6; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .ds-side a:hover, .ds-side a.on { background: #1b1b27; color: #fff; }
+    .ds-side .sec { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #77778a; margin: 18px 12px 6px; }
+    .ds-brand { font-weight: 800; font-size: 17px; margin-bottom: 14px; }
+    .ds-main { padding: 0 32px 80px; min-width: 0; }
+    .ds-hero { margin: 24px 0 28px; padding: 44px 28px; border-radius: 22px; text-align: center; background: radial-gradient(1200px 300px at 50% -40%, #7c3aed 0%, transparent 70%), linear-gradient(135deg, #1d1440, #0f1a2e 60%, #0b2a2c); }
+    .ds-hero h1 { font-size: clamp(28px, 4.4vw, 46px); margin: 0 0 10px; letter-spacing: -.02em; }
+    .ds-hero p { margin: 0 auto 22px; color: #c4c4d4; max-width: 640px; }
+    .ds-sizes { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+    .ds-size { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: #fff; text-decoration: none; font-size: 13px; font-weight: 600; min-width: 108px; transition: transform .15s, background .15s; }
+    .ds-size:hover { transform: translateY(-2px); background: rgba(255,255,255,.12); }
+    .ds-size i { display: block; background: linear-gradient(135deg, #a78bfa, #22d3ee); border-radius: 4px; }
+    .ds-size small { color: #a3a3b8; font-weight: 500; }
+    .ds-h { display: flex; align-items: baseline; justify-content: space-between; margin: 34px 0 14px; }
+    .ds-h h2 { margin: 0; font-size: 21px; }
+    .ds-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .ds-tabs button { border: 1px solid #2b2b3a; background: #14141d; color: #c9c9d6; padding: 7px 12px; border-radius: 999px; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .ds-tabs button.on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .ds-tpl { display: block; text-decoration: none; color: #ddd; font-size: 13px; font-weight: 600; }
+    .ds-tpl canvas { width: 100%; height: auto; border-radius: 12px; display: block; background: #1a1a24; transition: transform .15s, box-shadow .15s; }
+    .ds-tpl:hover canvas { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(124,58,237,.35); }
+    .ds-tpl span { display: block; margin-top: 8px; }
+    .ds-feats { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+    .ds-feat { padding: 18px; border-radius: 16px; background: #14141d; border: 1px solid #23232f; }
+    .ds-feat b { display: block; margin-bottom: 6px; }
+    .ds-feat span { color: #a3a3b8; font-size: 14px; line-height: 1.5; }
+    .ds-pro { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .ds-pro a { display: block; padding: 22px; border-radius: 18px; text-decoration: none; color: #fff; background: linear-gradient(135deg, #24124f, #102a3a); border: 1px solid #33335a; }
+    .ds-pro a b { font-size: 18px; display: block; margin-bottom: 6px; }
+    .ds-pro a span { color: #c4c4d4; font-size: 14px; line-height: 1.5; }
+    .ds-pro a small { display: block; margin-top: 10px; color: #8b8ba3; }
+    @media (max-width: 820px) {
+      .ds-wrap { grid-template-columns: 1fr; }
+      .ds-side { position: static; height: auto; display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; border-right: 0; border-bottom: 1px solid #23232f; }
+      .ds-side .sec, .ds-brand { display: none; }
+      .ds-main { padding: 0 16px 60px; }
+      .ds-hero { padding: 30px 16px; }
+      .ds-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    }
+  </style>
+</head>
+<body class="ds">
+  <div class="ds-wrap">
+    <aside class="ds-side" aria-label="Main">
+      <div class="ds-brand">🎨 Design Studio</div>
+      <a class="on" href="design.html">⌂ Design home</a>
+      <a href="#templates">✦ Templates</a>
+      <a href="app.html">🎬 Video editor</a>
+      <p class="sec">Pro tools</p>
+      <a href="pro/photo/" class="pro-link" data-pro="photo" hidden>🖌 Pro photo editor</a>
+      <a href="pro/video/" class="pro-link" data-pro="video" hidden>🎞 Pro video editor</a>
+      <a href="about.html">ⓘ About</a>
+    </aside>
+    <main class="ds-main">
+      <section class="ds-hero">
+        <h1>What will you design today?</h1>
+        <p>Thumbnails, Reels covers, Pinterest pins and posts. Start blank or from a template; every text, colour, sticker and photo stays editable. Nothing is uploaded.</p>
+        <div class="ds-sizes" id="sizes"></div>
+      </section>
+
+      <div class="ds-h" id="templates"><h2>Templates</h2><div class="ds-tabs" id="tabs" role="tablist" aria-label="Size"></div></div>
+      <div class="ds-grid" id="grid"></div>
+
+      <div class="ds-h"><h2>Everything a design needs</h2></div>
+      <div class="ds-feats">
+        <div class="ds-feat"><b>🖼 Your photo, your way</b><span>Upload a photo or grab a frame from your video. Fill or fit, drag to move, blurred edges, colour filters and adjustments.</span></div>
+        <div class="ds-feat"><b>✍️ Real typography</b><span>27 fonts incl. Hindi, outline, shadow, boxes, one-line, a colour for each word, and 90 animated caption styles.</span></div>
+        <div class="ds-feat"><b>✨ Elements</b><span>Headings, badges, tags and stickers. Duplicate, delete, undo and redo.</span></div>
+        <div class="ds-feat"><b>📐 Every size</b><span>YouTube, Reels/Shorts, Pinterest, Instagram and square. Download full size JPG.</span></div>
+      </div>
+
+      <div class="ds-h pro-h" hidden><h2>Pro tools</h2></div>
+      <div class="ds-pro" id="pro"></div>
+    </main>
+  </div>
+<script type="module">
+  import { FONTS_URL } from './js/templates.js';
+  import { SIZES, THUMBS, drawOverlay } from './js/thumbs.js';
+  import { newLayer, drawLayer } from './js/text-layers.js';
+  document.getElementById('fonts').href = FONTS_URL;
+  const $ = id => document.getElementById(id);
+  const link = (size, layout) => `app.html#design=${size}${layout ? `&layout=${layout}` : ''}`;
+  for (const z of SIZES) {
+    const a = document.createElement('a'); a.className = 'ds-size'; a.href = link(z.id);
+    const k = 40 / Math.max(z.w, z.h), i = document.createElement('i'); i.style.width = `${Math.round(z.w * k)}px`; i.style.height = `${Math.round(z.h * k)}px`;
+    a.append(i, z.name.split(' · ')[0]); const s = document.createElement('small'); s.textContent = `${z.w}×${z.h}`; a.append(s);
+    $('sizes').appendChild(a);
+  }
+  let size = SIZES[0];
+  function draw() {
+    const grid = $('grid'); grid.innerHTML = '';
+    const tw = 360, th = Math.round(tw * size.h / size.w);
+    THUMBS.forEach((tp, n) => {
+      const a = document.createElement('a'); a.className = 'ds-tpl'; a.href = link(size.id, tp.id);
+      const c = document.createElement('canvas'); c.width = tw; c.height = th;
+      const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, tw, th);
+      const hues = [[262, 200], [330, 260], [200, 160], [20, 340], [150, 210]][n % 5];
+      g.addColorStop(0, `hsl(${hues[0]} 60% 32%)`); g.addColorStop(1, `hsl(${hues[1]} 55% 12%)`);
+      x.fillStyle = g; x.fillRect(0, 0, tw, th);
+      drawOverlay(x, tw, th, tp.overlay);
+      for (const t of tp.texts) drawLayer(x, tw, th, newLayer(t));
+      const s = document.createElement('span'); s.textContent = tp.name;
+      a.append(c, s); grid.appendChild(a);
+    });
+  }
+  for (const z of SIZES) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = z.name.split(' · ')[0]; b.setAttribute('role', 'tab');
+    b.onclick = () => { size = z; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b)); draw(); };
+    if (z === size) b.classList.add('on');
+    $('tabs').appendChild(b);
+  }
+  draw();
+  // Canvas text doesn't make the browser fetch a font: ask for each one, then draw again.
+  if (document.fonts) {
+    const fonts = new Set(THUMBS.flatMap(t => t.texts.map(x => `${x.bold ? 800 : 500} ${x.italic ? 'italic ' : ''}40px '${x.font}'`.replace(/^(\d+) italic /, 'italic $1 '))));
+    Promise.all([...fonts].map(f => document.fonts.load(f, 'Aa ₹ गलती').catch(() => {}))).then(draw);
+  }
+  // Pro editors (open-source apps hosted with this site) are listed only when they're deployed.
+  const PRO = [
+    { id: 'photo', name: '🖌 Pro photo editor', text: 'Layers, masks, selections, brushes, curves, levels, 16 adjustment layers, filters and PSD files. A full photo editor that runs in your browser.', credit: 'PhotoCraft by the ArtCraft team · MIT / Apache-2.0' },
+    { id: 'video', name: '🎞 Pro video editor', text: 'Multi-track timeline, trimming, multicam, colour grading, keyframes, effects, titles and audio mixing.', credit: 'FilmCraft by the ArtCraft team · MIT / Apache-2.0' },
+  ];
+  for (const p of PRO) {
+    fetch(`pro/${p.id}/index.html`, { method: 'HEAD' }).then(r => {
+      if (!r.ok) return;
+      const a = document.createElement('a'); a.href = `pro/${p.id}/`;
+      a.innerHTML = `<b></b><span></span><small></small>`;
+      a.querySelector('b').textContent = p.name; a.querySelector('span').textContent = p.text; a.querySelector('small').textContent = p.credit;
+      $('pro').appendChild(a); document.querySelector('.pro-h').hidden = false;
+      document.querySelector(`.pro-link[data-pro="${p.id}"]`).hidden = false;
+    }).catch(() => {});
+  }
+</script>
+</body>
+</html>

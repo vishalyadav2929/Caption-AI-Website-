@@ -73,7 +73,7 @@
       <nav class="dash-nav">
         <label for="startFile" id="navClips"><span aria-hidden="true">🎞</span> Long video → Shorts</label>
         <label for="startFile"><span aria-hidden="true">💬</span> Auto captions</label>
-        <label for="photoFile" id="navThumb"><span aria-hidden="true">🎯</span> Thumbnail maker</label>
+        <a href="design.html" id="navThumb"><span aria-hidden="true">🎨</span> Design studio</a>
         <label for="photoFile"><span aria-hidden="true">🖼</span> Text on photo</label>
         <a href="#live" class="js-live"><span aria-hidden="true">●</span> Live captions</a>
       </nav>
@@ -105,7 +105,7 @@
       <div class="dash-cards">
         <label class="dash-card c5" for="startFile" id="cardClips"><b>Long video → Shorts</b><span>Upload a podcast or vlog, get several 9:16 clips with hooks and captions</span><i aria-hidden="true">🎞</i></label>
         <label class="dash-card c1" for="startFile"><b>Auto captions</b><span>Hindi, Hinglish, English + 30 languages, word-by-word</span><i aria-hidden="true">💬</i></label>
-        <label class="dash-card c6" for="photoFile" id="cardThumb"><b>Thumbnail maker</b><span>YouTube thumbnails, Reels covers and Pinterest pins from your photo, fully editable</span><i aria-hidden="true">🖼</i></label>
+        <a class="dash-card c6" href="design.html" id="cardThumb"><b>Design studio</b><span>Thumbnails, Reels covers, Pinterest pins and posts: templates, text, stickers, photo editing</span><i aria-hidden="true">🎨</i></a>
         <label class="dash-card c2" for="photoFile"><b>Text on photo</b><span>Type on any photo, any font, download full size</span><i aria-hidden="true">🖼</i></label>
         <a class="dash-card c3" href="#live" id="startLive"><b>Live captions</b><span>Record with your camera, captions appear as you speak</span><i aria-hidden="true">🎥</i></a>
         <a class="dash-card c4" href="#" id="startSkip"><b>Blank project</b><span>Open the editor and add media later</span><i aria-hidden="true">✚</i></a>
@@ -217,6 +217,21 @@
       </div>
       <div class="panel-b" id="paneCaptions" role="tabpanel" hidden>
         <div class="status" id="status" role="status" aria-live="polite"></div>
+        <div class="cap-style" id="capStyle" hidden>
+          <div class="cap-style-h"><b>Caption style</b><span id="capTplName"></span></div>
+          <div class="cap-tpl-strip" id="capTplStrip" role="listbox" aria-label="Caption styles"></div>
+          <div class="row field">
+            <div><label for="capFont">Font</label><select id="capFont"></select></div>
+            <div><label for="capCase">Case</label><select id="capCase"></select></div>
+          </div>
+          <div class="field"><label for="capSize">Size <b id="capSizeVal"></b></label><input type="range" id="capSize" min="50" max="180" value="100"></div>
+          <div class="row field cap-colors">
+            <div class="color"><input type="color" id="capColor" aria-label="Caption text colour"> Text</div>
+            <div class="color"><input type="color" id="capHi" aria-label="Highlight colour"> Highlight</div>
+            <div class="color"><input type="color" id="capStroke" aria-label="Outline colour"> Outline</div>
+          </div>
+          <div class="row"><button class="link" id="capAllStyles" type="button">All styles →</button><button class="link" id="capMoreType" type="button">More typography (weight, box, position) →</button></div>
+        </div>
         <div class="cap-bar" id="capBar" hidden>
           <label for="trTarget">Caption language</label>
           <div class="row tr-row">
@@ -269,7 +284,7 @@
       <div class="panel-b" id="paneThumb" role="tabpanel" hidden>
         <div id="thumbNoPhoto">
           <p class="hint">Make a thumbnail or cover from a photo, or from a frame of your video. Pick a layout below; every text, colour and position stays editable.</p>
-          <div class="row thumb-src"><button class="btn btn-sm btn-primary" id="thumbFromFrame" type="button">📸 Use this video frame</button><label class="btn btn-sm" for="photoFile2">🖼 Upload a photo</label></div>
+          <div class="row thumb-src"><button class="btn btn-sm btn-primary" id="thumbFromFrame" type="button">📸 Use this video frame</button><label class="btn btn-sm" for="photoFile2">🖼 Upload a photo</label><button class="btn btn-sm" type="button" data-blank="yt">✚ Blank design</button></div>
           <input type="file" id="photoFile2" accept="image/*" hidden>
         </div>
         <div id="thumbTools" hidden>
@@ -279,7 +294,12 @@
             <div><label for="thumbOverlay">Overlay</label><select id="thumbOverlay"></select></div>
           </div>
           <div class="row field"><div class="color"><input type="color" id="thumbOvColor" value="#7c3aed" aria-label="Overlay colour"> Overlay colour</div></div>
-          <p class="hint">Drag the photo on the preview to move it. Click a text to edit it (font, colours, words, one line), or add more in Text.</p>
+          <div class="row"><label class="btn btn-sm" for="thumbReplaceIn">🖼 Replace photo</label><input type="file" id="thumbReplaceIn" accept="image/*" hidden></div>
+          <p class="hint">Drag the photo on the preview to move it. Click a text to edit it (font, colours, words, one line, animation).</p>
+          <h3 class="more-h">Add text</h3>
+          <div class="el-grid" id="thumbElements"></div>
+          <h3 class="more-h">Stickers</h3>
+          <div class="st-grid" id="thumbStickers"></div>
         </div>
         <h3 class="more-h">Layouts</h3>
         <div class="thumb-grid" id="thumbGrid"></div>
@@ -390,6 +410,7 @@
         <p class="hint word-tip" id="wordTip">Tip: click a word on the timeline to give just that word its own colour.</p>
         <div class="group">
           <h3>Text</h3>
+          <div class="field"><label for="fontSel">Font</label><select id="fontSel"><option value="">Template font</option></select></div>
           <div class="field"><label for="size">Size <b id="sizeVal"></b></label><input type="range" id="size" min="50" max="180" value="100"></div>
           <div class="row field">
             <div><label for="weight">Weight</label>
