@@ -1425,6 +1425,69 @@ await step('Long video → Shorts offers upload or a YouTube link (details, how 
   await ctx.close();
 });
 
+await step('reels from ALL videos in Media: every video’s best moments exported, numbered per video', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, acceptDownloads: true, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  await m.addInitScript(() => { window.__vczFastCodecs = ['vp9']; });
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  m.on('dialog', d => d.accept());
+  const vid = await readFile(join(FIX, 'long16x9.webm'));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', [{ name: 'vlog-a.webm', mimeType: 'video/webm', buffer: vid }, { name: 'vlog-b.webm', mimeType: 'video/webm', buffer: vid }]);
+  await m.waitForFunction(() => document.querySelectorAll('#mediaBin .media-item').length === 2, null, { timeout: 20000 });
+  // Captions for both (as if made earlier): the queue reuses them.
+  for (const name of ['vlog-a', 'vlog-b']) {
+    if (!(await m.evaluate(n => window.__vcz.S.file.name.startsWith(n), name))) {
+      await m.click('#ltabMedia'); await m.locator('#mediaBin .media-item', { hasText: name }).click();
+      await m.waitForFunction(n => window.__vcz.S.file.name.startsWith(n), name);
+    }
+    await m.setInputFiles('#srtIn', join(FIX, 'long16x9.srt'));
+    await m.waitForFunction(() => window.__vcz.S.segments.length > 0);
+    await m.waitForTimeout(800);
+  }
+  await m.click('#ltabClips');
+  await m.selectOption('#clipLen', '15-30');
+  await m.selectOption('#clipCount', '3');
+  const names = [];
+  m.on('download', d => names.push(d.suggestedFilename()));
+  await m.click('#clipAllVideos');
+  await m.waitForFunction(() => /^Done: \d+ reels/.test(document.getElementById('clipNote').textContent), null, { timeout: 480000 });
+  const note = await m.textContent('#clipNote');
+  const n = +note.match(/Done: (\d+)/)[1];
+  await m.waitForTimeout(500);
+  assert.ok(n >= 4, note);
+  assert.equal(names.length, n, names.join(', '));
+  assert.ok(names.some(x => /^vlog-a-part-1/.test(x)) && names.some(x => /^vlog-b-part-1/.test(x)), names.join(', '));
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
+await step('text templates: after styling captions from the Captions panel, a style picked with a text selected goes on the text', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 }, serviceWorkers: 'block' });
+  const m = await ctx.newPage();
+  const errs = []; m.on('pageerror', e => errs.push(e.message));
+  await m.goto(`${BASE}/app.html`);
+  await m.click('#startSkip');
+  await m.setInputFiles('#fileIn', join(FIX, 'portrait.webm'));
+  await m.waitForSelector('#timeline:not([hidden])');
+  await m.setInputFiles('#srtIn', join(FIX, 'sample.srt'));
+  await m.click('#tabCaptions'); await m.locator('.cap-tpl', { hasText: 'Spark' }).click();
+  await m.click('#ltabText'); await m.click('#txtAdd'); await m.fill('#txtText', 'hello dada');
+  await pickTpl(m, 'Red Wipe');
+  assert.deepEqual(await m.evaluate(() => [window.__vcz.S.o.texts[0].tpl, window.__vcz.S.tplId]), ['red-wipe', 'spark']);
+  // The switch still sends styles to the captions on purpose.
+  await m.click('#styleFor button[data-v="cap"]');
+  await pickTpl(m, 'Crazy');
+  assert.deepEqual(await m.evaluate(() => [window.__vcz.S.o.texts[0].tpl, window.__vcz.S.tplId]), ['red-wipe', 'crazy']);
+  // Selecting the text again: styles go on it.
+  await m.click('#ltabText'); await m.locator('#txtList .txt-item').first().click();
+  await pickTpl(m, 'Discipline');
+  assert.equal(await m.evaluate(() => window.__vcz.S.o.texts[0].tpl), 'discipline');
+  assert.deepEqual(errs, []);
+  await ctx.close();
+});
+
 await step('no uncaught page errors', async () => { assert.deepEqual(errors, []); });
 
 await browser.close();
