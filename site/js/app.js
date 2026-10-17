@@ -11,8 +11,10 @@ import { exportFast } from './export-fast.js';
 import { Grader, LOOKS, buildLut, parseCube, DEFAULT_GRADE, isGraded } from './grade.js';
 import { mountTimeline, wavePeaks } from './timeline.js';
 import { SOUNDS, soundBuffer, mixWithSfx } from './sfx.js';
-import { TEXT_FONTS, newLayer, drawLayer, layersAt, hitLayer } from './text-layers.js';
+import { TEXT_FONTS, newLayer, drawLayer, layersAt, hitLayer, layout } from './text-layers.js';
 import { findClips, cropRect, ASPECTS, aspectSize } from './clips.js';
+import { TEXT_ANIMS, animState, breakApart } from './text-fx.js';
+import { SIZES, OVERLAYS, THUMBS, photoRect, drawOverlay } from './thumbs.js';
 import { newId, listProjects, getProject, getProjectFile, putProject, putProjectFile, patchProject, deleteProject } from './projects.js';
 import { cloudAvailable, cloudTranscribe } from './cloud-asr.js';
 import './vendor/fix-webm-duration.js'; // sets window.ysFixWebmDuration (MIT)
@@ -157,8 +159,9 @@ const gallery = mountGallery({
   onSelect: t => {
     if (S.exporting) return;
     if (document.fonts) document.fonts.load(fontString(t, 40), 'Aa अ').catch(() => {});
-    // A text is selected: the style goes on that text (like picking a text template in any editor).
-    const L = curText();
+    // "Style goes on" decides: captions or text. Unset, a selected text wins (like any editor's text templates).
+    const target = styleTarget();
+    const L = target === 'text' && curText();
     if (L) {
       patchText({ tpl: t.id });
       S.textTpl = t.id;
@@ -167,8 +170,7 @@ const gallery = mountGallery({
     // No captions (a photo, or a video without captions yet): styles are for text. Pick first, type after.
     // Photos have no captions, so styles are for text there. On videos: when the visitor came from the
     // Text tool, or already has text but no captions. Otherwise the style is for the captions.
-    const forText = !!S.image || S.lastTool === 'text' || (!S.segments.length && texts().length > 0);
-    if (forText && S.file) {
+    if (target === 'text' && S.file) {
       S.textTpl = t.id;
       gallery.select(t.id);
       if (texts().length) {
@@ -180,6 +182,7 @@ const gallery = mountGallery({
       return toast(`“${t.name}” chosen. Type your text: it appears in this style.`, 4500);
     }
     S.tplId = t.id;
+    if (S.file && !S.image && !S.segments.length && !genRunning) toast(`“${t.name}” set for captions. Open Captions and press ✨ Make captions.`, 4500);
     // Style overrides belong to the old template. Captions are untouched: each template shows long captions
     // in pieces of its own size at render time (e.g. one word at a time for "Pill").
     S.o = keepO();
@@ -187,12 +190,33 @@ const gallery = mountGallery({
   },
 });
 
+/** Where a picked style goes: 'cap' (captions) or 'text'. The visitor can choose; otherwise it's guessed. */
+function styleTarget() {
+  if (S.image) return 'text';
+  if (S.styleFor) return S.styleFor;
+  if (curText()) return 'text';
+  return S.lastTool === 'text' || (!S.segments.length && texts().length > 0) ? 'text' : 'cap';
+}
+function renderStyleFor() {
+  $('styleForRow').hidden = !!S.image;
+  const v = styleTarget();
+  $('styleFor').querySelectorAll('button').forEach(b => { const on = b.dataset.v === v; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+}
+$('styleFor').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.styleFor = b.dataset.v;
+  if (S.styleFor === 'cap') { deselectText(); gallery.select(S.tplId); }
+  else { const L = curText(); gallery.select(L && L.tpl ? L.tpl : S.textTpl || null); }
+  renderStyleFor();
+  toast(S.styleFor === 'cap' ? 'Styles now change the captions.' : 'Styles now change your text.');
+});
+
 // On phones and tablets the template strip sits right under the video, so a tap shows the change at once.
 {
   const mq = window.matchMedia('(max-width: 1100px)');
   const home = $('grid').parentElement;
   const place = () => {
-    (mq.matches ? $('mTpl') : home).appendChild($('grid'));
+    (mq.matches ? $('mTpl') : home).append($('styleForRow'), $('grid'));
     // The timeline would make the pinned preview too tall on phones: put it in the page flow below it.
     if (mq.matches) $('main').after($('timeline')); else $('tlDock').appendChild($('timeline'));
     $('editor').classList.toggle('no-tl', mq.matches || $('timeline').hidden);
@@ -336,16 +360,18 @@ $('words').addEventListener('change', e => {
 $('hinglish').onchange = e => { S.hinglish = e.target.checked; renderSegs(); commit(); };
 
 // Left: tools (what to add). Right: details of what's selected. On phones the styles sit under the video.
-const LTABS = [['ltabMedia', 'paneMedia', 'media'], ['ltabClips', 'paneClips', 'clips'], ['tabCaptions', 'paneCaptions', 'captions'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd'],
+const LTABS = [['ltabMedia', 'paneMedia', 'media'], ['ltabClips', 'paneClips', 'clips'], ['ltabThumb', 'paneThumb', 'thumb'], ['tabCaptions', 'paneCaptions', 'captions'], ['ltabText', 'paneText', 'text'], ['ltabSnd', 'paneSnd', 'snd'],
   ['ltabTpl', 'paneTpl', 'tpl'], ['tabColor', 'paneColor', 'color'], ['ltabAdj', 'paneAdjust', 'adjust']];
 function showLTab(which) {
   if (which === 'tpl' && matchMedia('(max-width: 1100px)').matches) which = 'captions';
-  if (which !== 'tpl') S.lastTool = which;
+  if (which !== 'tpl') S.lastTool = which; else renderStyleFor();
   for (const [tab, pane, id] of LTABS) {
     const on = which === id;
     $(tab).classList.toggle('on', on); $(tab).setAttribute('aria-selected', on); $(pane).hidden = !on;
   }
   if (which === 'color') refreshLookThumbs();
+  if (which === 'thumb') renderThumbUI();
+  if (which === 'text') renderTextUI();
 }
 LTABS.forEach(([tab, , id]) => { $(tab).onclick = () => showLTab(id); });
 const RTABS = [['tabStyle', 'paneStyle', 'style'], ['tabTxt', 'paneTxtProps', 'text'], ['tabInfo', 'paneInfo', 'info']];
@@ -518,6 +544,8 @@ function renderTextUI() {
     list.appendChild(b);
   });
   const L = curText();
+  $('txtAutoCap').hidden = !!S.image || !S.file || S.segments.length > 0;
+  renderStyleFor();
   $('txtEdit').hidden = !L; $('txtNone').hidden = !!L;
   $('txtTime').hidden = !!S.image;
   if (!L) return;
@@ -533,11 +561,14 @@ function renderTextUI() {
   if (S.txtWord != null) { $('txtWordName').textContent = L.text.split(/\s+/).filter(Boolean)[S.txtWord] || ''; $('txtWordColor').value = (L.wordColors && L.wordColors[S.txtWord]) || '#ffe600'; }
   const tp = L.tpl && TEMPLATES.find(x => x.id === L.tpl);
   $('txtTplName').textContent = tp ? tp.name : 'None (plain text)';
-  $('txtTplClear').hidden = !tp;
+  $('txtTplClear').hidden = !tp; $('txtBreak').hidden = !tp;
+  $('txtAnim').value = L.anim || '';
+  $('txtAnim').options[0].textContent = tp ? 'Default (the style’s own)' : 'Default (none)';
+  if (![...$('txtFont').options].some(o => o.value === L.font)) { const o = document.createElement('option'); o.value = o.textContent = L.font; $('txtFont').appendChild(o); }
   $('txtEdit').classList.toggle('has-tpl', !!tp);
   $('txtFont').value = L.font;
   $('txtSize').value = Math.round(L.size * 100); $('txtSizeVal').textContent = $('txtSize').value;
-  $('txtBold').setAttribute('aria-pressed', !!L.bold); $('txtItalic').setAttribute('aria-pressed', !!L.italic);
+  $('txtBold').setAttribute('aria-pressed', !!L.bold); $('txtItalic').setAttribute('aria-pressed', !!L.italic); $('txtOneLine').setAttribute('aria-pressed', !!L.oneLine);
   $('txtAlign').querySelectorAll('button').forEach(b => { const on = b.dataset.v === L.align; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
   $('txtColor').value = L.color; $('txtShadow').checked = !!L.shadow;
   $('txtStroke').value = L.stroke; $('txtStrokeW').value = Math.round(L.strokeW * 100); $('txtStrokeWVal').textContent = $('txtStrokeW').value;
@@ -576,6 +607,29 @@ $('txtAdd').onclick = () => addText();
 $('txtAdd2').onclick = () => addText();
 $('txtTplPick').onclick = () => { showLTab('tpl'); toast('Pick a style for your text.'); };
 $('txtTplClear').onclick = () => { S.textTpl = null; patchText({ tpl: null }); };
+TEXT_ANIMS.forEach(([v, n]) => { const o = document.createElement('option'); o.value = v; o.textContent = n; $('txtAnim').appendChild(o); });
+$('txtAnim').onchange = e => patchText({ anim: e.target.value || null });
+$('txtAnimAll').onclick = () => {
+  const L = curText(); if (!L) return;
+  S.o.texts = texts().map(x => ({ ...x, anim: L.anim || null }));
+  commit(); renderTextUI(); toast('Same animation on every text.');
+};
+// Break a template text into plain texts (one per line), each with its own font, colours and animation.
+$('txtBreak').onclick = () => {
+  const L = curText(); const tp = L && TEMPLATES.find(x => x.id === L.tpl); if (!tp) return;
+  const pieces = breakApart(L, tp, canvas.width / canvas.height).map(p => newLayer(p));
+  if (!pieces.length) return;
+  pieces.forEach(p => { if (document.fonts) document.fonts.load(`700 40px '${p.font}'`, p.text).catch(() => {}); });
+  const i = texts().findIndex(x => x.id === L.id);
+  S.o.texts = [...texts().slice(0, i), ...pieces, ...texts().slice(i + 1)];
+  S.textTpl = null;
+  commit(); selectText(pieces[0].id);
+  toast(`Split into ${pieces.length} text${pieces.length > 1 ? 's' : ''}. Click each one to change its font, colours or animation.`, 4500);
+};
+$('txtMakeCaps').onclick = () => {
+  showLTab('captions');
+  if (!S.segments.length && !genRunning) startCaptions();
+};
 const txtWordColour = (color, save) => {
   const L = curText(); if (!L || S.txtWord == null) return;
   const wc = { ...(L.wordColors || {}) };
@@ -603,6 +657,7 @@ $('txtBg').addEventListener('input', () => { const L = curText(); if (L && !L.bg
 $('txtShadow').onchange = e => patchText({ shadow: e.target.checked });
 $('txtBold').onclick = () => { const L = curText(); L && patchText({ bold: !L.bold }); };
 $('txtItalic').onclick = () => { const L = curText(); L && patchText({ italic: !L.italic }); };
+$('txtOneLine').onclick = () => { const L = curText(); L && patchText({ oneLine: !L.oneLine }); };
 $('txtAlign').addEventListener('click', e => { const b = e.target.closest('button'); if (b) patchText({ align: b.dataset.v }); });
 const txtTimeIn = which => () => {
   const L = curText(); if (!L) return;
@@ -650,14 +705,14 @@ function drawTplText(c2, W, H, L, t, still) {
   const scale = L.size / (tp.size * 1.6), px = tp.size * Math.min(W, H) * 1.6 * scale;
   c2.save();
   c2.translate((L.x - 0.5) * W, 0);
-  drawCaption(c2, W, H, chunk, still ? 1 : t, { ...tp }, { scale, pos: L.y });
+  drawCaption(c2, W, H, chunk, still ? 1 : t, { ...tp, ...(L.oneLine ? { oneLine: true, layout: null, lines: null } : {}) }, { scale, pos: L.y });
   c2.restore();
   return { px, ...tplBox(L, tp, W, H, scale) };
 }
 // Where a template actually puts the text: drawn once off-screen (final state) and measured, then cached.
 const boxCache = new Map(), boxCanvas = document.createElement('canvas');
 function tplBox(L, tp, W, H, scale) {
-  const key = `${L.text}|${L.tpl}|${L.size}|${L.x}|${L.y}|${W}|${H}`;
+  const key = `${L.text}|${L.tpl}|${L.size}|${L.x}|${L.y}|${W}|${H}|${!!L.oneLine}`;
   const hit = boxCache.get(L.id);
   if (hit && hit.key === key) return hit.box;
   const k = Math.min(1, 360 / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
@@ -666,7 +721,7 @@ function tplBox(L, tp, W, H, scale) {
   c.clearRect(0, 0, w, h);
   const words = spreadWords(L.text.replace(/\s+/g, ' ').trim(), 0, 1), chunk = buildChunks(words, 999, 9999)[0];
   c.save(); c.translate((L.x - 0.5) * w, 0);
-  if (chunk) drawCaption(c, w, h, chunk, 1, { ...tp }, { scale, pos: L.y });
+  if (chunk) drawCaption(c, w, h, chunk, 1, { ...tp, ...(L.oneLine ? { oneLine: true, layout: null, lines: null } : {}) }, { scale, pos: L.y });
   c.restore();
   const d = c.getImageData(0, 0, w, h).data;
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
@@ -679,10 +734,35 @@ function tplBox(L, tp, W, H, scale) {
 function drawTexts(c2, W, H, t, still = false) {
   const boxes = [];
   for (const L of layersAt(texts(), t, still)) {
-    const b = L.tpl ? drawTplText(c2, W, H, L, t, still) : drawLayer(c2, W, H, L);
+    const b = drawTextAnimated(c2, W, H, L, t, still);
     if (b) boxes.push({ id: L.id, ...b });
   }
   return boxes;
+}
+// A text's own animation (picked per text) wraps whatever draws it. A template text with its own
+// animation is drawn in its final state and moved by this one instead, so the two never stack.
+function drawTextAnimated(c2, W, H, L, t, still) {
+  const draw = (X, st) => (X.tpl ? drawTplText(c2, W, H, X, t, st) : drawLayer(c2, W, H, X));
+  if (still || !L.anim) return draw(L, still);
+  const a = animState(L.anim, t, L.start, L.end);
+  let X = L;
+  if (a.typeP < 1) {
+    const n = Math.round(String(L.text).length * a.typeP);
+    if (!n) return boxOnly(c2, W, H, L);
+    X = { ...L, text: String(L.text).slice(0, n) };
+  }
+  const cx = L.x * W, cy = L.y * H;
+  c2.save();
+  c2.globalAlpha *= a.alpha;
+  c2.translate(cx + a.dx * W, cy + a.dy * H); c2.scale(a.scale, a.scale); c2.translate(-cx, -cy);
+  const b = draw(X, true);
+  c2.restore();
+  return X === L ? b : boxOnly(c2, W, H, L) || b;
+}
+// The box of the whole text (for clicking and dragging) without drawing it.
+function boxOnly(c2, W, H, L) {
+  if (L.tpl) { const tp = TEMPLATES.find(x => x.id === L.tpl); return tp ? { px: L.size * Math.min(W, H), ...tplBox(L, tp, W, H, L.size / (tp.size * 1.6)) } : null; }
+  c2.save(); const b = layout(c2, W, H, L); c2.restore(); return b;
 }
 function deselectText() {
   if (!S.textSel) return false;
@@ -928,7 +1008,7 @@ async function loadImage(file) {
   video.pause(); video.removeAttribute('src'); video.load();
   if (S.fileURL) URL.revokeObjectURL(S.fileURL);
   S.fileURL = url; S.file = file; S.image = img; S.wave = null; S.audioP = null;
-  if (!opening) { S.projectId = null; Object.assign(S.o, { clip: null, found: null, texts: [], sfx: [], sfxAuto: null }); S.textSel = null; }
+  if (!opening) { S.projectId = null; Object.assign(S.o, { clip: null, found: null, texts: [], sfx: [], sfxAuto: null, frame: null, overlay: null }); S.textSel = null; }
   S.segments = []; S.selected = -1;
   document.body.classList.add('photo');
   hist = []; hIdx = -1; commit();
@@ -938,7 +1018,10 @@ async function loadImage(file) {
   $('meta').textContent = `${file.name} · ${img.naturalWidth}×${img.naturalHeight} · photo · ${fmtBytes(file.size)}`;
   $('time').textContent = 'Photo';
   renderSegs(); syncActions(); refreshLookThumbs();
-  if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); showRTab('text'); }
+  if (S.wantThumb) {
+    S.wantThumb = false;
+    setFrame(); commit(); showLTab('thumb');
+  } else if (!texts().length) addText(); else { renderTextUI(); showLTab('text'); showRTab('text'); }
   renderMedia(); updateThumbBg();
   if (!opening) createProject(file, 'photo');
   status('Photo loaded. Type your text on the left, drag it on the photo, then press Export.');
@@ -978,7 +1061,7 @@ async function loadFile(file) {
   S.file = file;
   S.image = null; document.body.classList.remove('photo');
   // A new file is a new project: its own text, sounds and shorts (the chosen look stays).
-  if (!opening) { S.projectId = null; Object.assign(S.o, { clip: null, found: null, texts: [], sfx: [], sfxAuto: null }); S.textSel = null; }
+  if (!opening) { S.projectId = null; Object.assign(S.o, { clip: null, found: null, texts: [], sfx: [], sfxAuto: null, frame: null, overlay: null }); S.textSel = null; }
   S.decodeFailed = false;
   // Start reading the sound right away, so it's ready by the time captions are requested.
   S.audioP = decodeFull(file); S.audioP.catch(() => {});
@@ -1038,12 +1121,24 @@ $('seek').oninput = e => {
       const L = texts().find(l => l.id === id);
       drag = { text: L, x0: e.clientX, y0: e.clientY, lx: L.x, ly: L.y, moved: false, w: r.width, h: r.height };
       if (S.textSel !== id) selectText(id);
+    } else if (S.image && S.o.frame) {
+      const f = S.o.frame, rc = photoRect(S.image.naturalWidth, S.image.naturalHeight, canvas.width, canvas.height, f);
+      drag = { pan: true, x0: e.clientX, y0: e.clientY, fx: f.x ?? 0.5, fy: f.y ?? 0.5, ow: rc.w - canvas.width, oh: rc.h - canvas.height, k: canvas.width / r.width, moved: false, wasSel: !!S.textSel };
     } else drag = { y0: e.clientY, pos0: S.o.pos ?? baseTpl().pos ?? 0.72, moved: false, wasSel: !!S.textSel };
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('dblclick', () => { if (curText()) { $('txtText').focus(); $('txtText').select(); } });
   canvas.addEventListener('pointermove', e => {
     if (!drag) return;
+    if (drag.pan) {
+      const dx = (e.clientX - drag.x0) * drag.k, dy = (e.clientY - drag.y0) * drag.k;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      drag.moved = true;
+      const cl = v => Math.min(1, Math.max(0, v));
+      if (Math.abs(drag.ow) > 1) S.o.frame.x = cl(drag.fx - dx / drag.ow);
+      if (Math.abs(drag.oh) > 1) S.o.frame.y = cl(drag.fy - dy / drag.oh);
+      return;
+    }
     if (drag.text) {
       const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
       if (!drag.moved && Math.hypot(dx, dy) < 4) return;
@@ -1674,16 +1769,16 @@ function openExportDialog() {
 }
 $('exportBtn').onclick = openExportDialog;
 async function exportPhoto() {
-  const img = S.image, k = Math.min(1, 4096 / Math.max(img.naturalWidth, img.naturalHeight));
-  const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const img = S.image, f = S.o.frame, k = Math.min(1, 4096 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = f ? f.w : Math.round(img.naturalWidth * k), h = f ? f.h : Math.round(img.naturalHeight * k);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const x = c.getContext('2d');
-  x.drawImage(graded(img, w, h), 0, 0, w, h);
+  drawPhoto(x, w, h);
   drawTexts(x, w, h, 0, true);
   const png = /png/i.test(S.file.type);
   const blob = await new Promise(r => c.toBlob(r, png ? 'image/png' : 'image/jpeg', 0.95));
   if (!blob) return toast('Couldn’t save the photo in this browser.');
-  const name = `${S.file.name.replace(/\.[^.]+$/, '')}-text.${png ? 'png' : 'jpg'}`;
+  const name = `${S.file.name.replace(/\.[^.]+$/, '')}-${f ? 'thumbnail' : 'text'}.${png ? 'png' : 'jpg'}`;
   download(blob, name);
   status(`Saved “${name}” (${w}×${h}, ${fmtBytes(blob.size)}).`);
 }
@@ -1696,7 +1791,7 @@ $('xGo').onclick = e => {
   exportVideo({ kind, size });
 };
 
-async function exportVideo({ kind = 'video', size } = {}) {
+async function exportVideo({ kind = 'video', size, batch } = {}) {
   if (S.exporting || !S.file) return;
   if (!window.MediaRecorder || !xcanvasOpaque.captureStream) return toast('Export needs MediaRecorder, which this browser doesn’t support. Try Chrome, Edge, Firefox or Safari.', 6000);
   const overlay = kind !== 'video';
@@ -1714,7 +1809,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
   const xctx = kind === 'alpha' ? xctxAlpha : xctxOpaque;
   xcanvas.width = size.w; xcanvas.height = size.h;
   setExportUI(true);
-  $('exportTitle').textContent = kind === 'video' ? 'Exporting video…' : kind === 'alpha' ? 'Exporting transparent captions…' : 'Exporting green-screen captions…';
+  $('exportTitle').textContent = batch ? `Exporting short ${batch}…` : kind === 'video' ? 'Exporting video…' : kind === 'alpha' ? 'Exporting transparent captions…' : 'Exporting green-screen captions…';
   $('exportBar').style.width = '0%';
   const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
   $('exportText').textContent = `Preparing ${ext.toUpperCase()} · ${size.w}×${size.h}…`;
@@ -1874,7 +1969,7 @@ async function exportVideo({ kind = 'video', size } = {}) {
     video.currentTime = S.o.clip ? S.o.clip.start : 0;
   }
 }
-$('exportCancel').onclick = () => { if (exportJob) { exportJob.cancelled = true; exportJob.cancel && exportJob.cancel(); exportJob.finish && exportJob.finish(); } };
+$('exportCancel').onclick = () => { S.batchCancelled = true; if (exportJob) { exportJob.cancelled = true; exportJob.cancel && exportJob.cancel(); exportJob.finish && exportJob.finish(); } };
 
 // ---------- translation ----------
 // Chrome (desktop, 138+) has a free on-device translator. Every other browser (iPhone Safari, Android,
@@ -1999,9 +2094,9 @@ function drawFrame() {
   const W = canvas.width, H = canvas.height;
   const t0 = tpl(), opts = { scale: S.o.scale, pos: S.o.pos ?? undefined, fill: video };
   if (S.mode === 'file' && S.image) {
-    const img = S.image;
-    if (Math.abs(W / H - img.naturalWidth / img.naturalHeight) > 0.01) fitCanvas(img.naturalWidth, img.naturalHeight);
-    ctx.drawImage(graded(img, canvas.width, canvas.height), 0, 0, canvas.width, canvas.height);
+    const img = S.image, f = S.o.frame, fw = f ? f.w : img.naturalWidth, fh = f ? f.h : img.naturalHeight;
+    if (Math.abs(W / H - fw / fh) > 0.01) fitCanvas(fw, fh);
+    drawPhoto(ctx, canvas.width, canvas.height);
     S.textBoxes = drawTexts(ctx, canvas.width, canvas.height, 0, true);
     drawTextSelection();
     return 0;
@@ -2162,6 +2257,7 @@ function exitClip() {
 function renderClipUI() {
   const c = S.o.clip;
   $('clipActive').hidden = !c;
+  $('clipAll').hidden = !(S.o.found && S.o.found.length > 1);
   if (c) {
     $('clipRange').textContent = `${fmt(c.start)}–${fmt(c.end)} · ${Math.round(c.end - c.start)} s`;
     $('clipX').value = Math.round((c.x ?? 0.5) * 100); $('clipXVal').textContent = `${$('clipX').value}%`;
@@ -2203,6 +2299,25 @@ function renderClipUI() {
   });
 }
 $('clipFind').onclick = () => findAndShowClips();
+// Export every suggested short, one after another (each is its own download).
+$('clipAll').onclick = async () => {
+  const list = S.o.found || [];
+  if (!list.length || S.exporting) return;
+  if (!confirm(`Export all ${list.length} shorts one after another? Your browser may ask once to allow several downloads.`)) return;
+  const was = S.o.clip;
+  let done = 0;
+  for (let i = 0; i < list.length; i++) {
+    applyClip(i);
+    const z = aspectSize(S.o.clip.aspect);
+    $('exportTitle').textContent = `Exporting short ${i + 1} of ${list.length}…`;
+    await exportVideo({ kind: 'video', size: { w: z.w, h: z.h, label: '' }, batch: `${i + 1}/${list.length}` });
+    if (S.batchCancelled) break;
+    done++;
+  }
+  S.batchCancelled = false;
+  status(done === list.length ? `Exported ${done} shorts.` : `Stopped after ${done} of ${list.length} shorts.`);
+  if (!was) exitClip();
+};
 $('clipExit').onclick = () => exitClip();
 $('clipExport').onclick = () => openExportDialog();
 $('clipX').addEventListener('input', e => { if (S.o.clip) { S.o.clip.x = e.target.value / 100; $('clipXVal').textContent = `${e.target.value}%`; } });
@@ -2228,6 +2343,90 @@ const clipTime = which => () => {
 $('clipStart').onchange = clipTime('start');
 $('clipEnd').onchange = clipTime('end');
 ['cardClips', 'toolClips', 'navClips'].forEach(id => $(id).addEventListener('click', () => { S.wantClips = true; }));
+
+// ---------- thumbnail maker ----------
+/** The photo in its frame (fill or fit with blurred edges, panned), graded, plus the overlay. */
+function drawPhoto(c2, W, H, img = S.image, f = S.o.frame, overlay = S.o.overlay) {
+  if (!f) { c2.drawImage(graded(img, W, H), 0, 0, W, H); drawOverlay(c2, W, H, overlay); return; }
+  const iw = img.naturalWidth || img.videoWidth, ih = img.naturalHeight || img.videoHeight, r = photoRect(iw, ih, W, H, f);
+  c2.fillStyle = '#000'; c2.fillRect(0, 0, W, H);
+  if (f.fit === 'contain') {
+    const b = photoRect(iw, ih, W, H, { fit: 'cover' });
+    c2.save(); if ('filter' in c2) c2.filter = 'blur(22px) brightness(.65)'; c2.drawImage(img, b.x, b.y, b.w, b.h); c2.restore();
+  }
+  c2.drawImage(graded(img, Math.max(1, Math.round(r.w)), Math.max(1, Math.round(r.h))), r.x, r.y, r.w, r.h);
+  drawOverlay(c2, W, H, overlay);
+}
+SIZES.forEach(z => { const o = document.createElement('option'); o.value = z.id; o.textContent = z.name; $('thumbSize').appendChild(o); });
+OVERLAYS.forEach(([id, nm]) => { const o = document.createElement('option'); o.value = id; o.textContent = nm; $('thumbOverlay').appendChild(o); });
+const defaultSize = () => SIZES.find(z => z.id === ((S.image ? S.image.naturalHeight > S.image.naturalWidth : video.videoHeight > video.videoWidth) ? 'reel' : 'yt'));
+function setFrame(sizeId) {
+  const z = SIZES.find(x => x.id === sizeId) || defaultSize();
+  S.o.frame = { ...(S.o.frame || { fit: 'cover', x: 0.5, y: 0.5 }), id: z.id, w: z.w, h: z.h };
+}
+function renderThumbUI() {
+  const photo = !!S.image;
+  $('thumbNoPhoto').hidden = photo; $('thumbTools').hidden = !photo; $('thumbExport').hidden = !photo;
+  $('thumbFromFrame').disabled = !(S.file && !S.image && video.readyState >= 2);
+  if (photo) {
+    const f = S.o.frame;
+    $('thumbSize').value = f ? f.id : ''; $('thumbFit').value = f ? f.fit : 'cover';
+    $('thumbOverlay').value = (S.o.overlay && S.o.overlay.type) || 'none';
+    $('thumbOvColor').value = (S.o.overlay && S.o.overlay.color) || '#7c3aed';
+  }
+  renderThumbGrid();
+}
+/** Layout previews drawn on the user's own photo (or the current video frame). */
+function renderThumbGrid() {
+  const grid = $('thumbGrid');
+  grid.innerHTML = '';
+  const src = S.image || (video.readyState >= 2 && video.videoWidth ? video : null);
+  const z = (S.o.frame && S.image) ? S.o.frame : defaultSize() || SIZES[0];
+  const tw = 160, th = Math.round(tw * z.h / z.w);
+  for (const tp of THUMBS) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'thumb-tile'; b.title = `Use “${tp.name}”`;
+    const c = document.createElement('canvas'); c.width = tw; c.height = th;
+    const x = c.getContext('2d');
+    if (src) drawPhoto(x, tw, th, src, { fit: 'cover', x: 0.5, y: 0.5 }, tp.overlay);
+    else { const g = x.createLinearGradient(0, 0, tw, th); g.addColorStop(0, '#3b2a66'); g.addColorStop(1, '#0d0d16'); x.fillStyle = g; x.fillRect(0, 0, tw, th); drawOverlay(x, tw, th, tp.overlay); }
+    for (const t of tp.texts) drawLayer(x, tw, th, newLayer(t));
+    const nm = document.createElement('span'); nm.textContent = tp.name;
+    b.append(c, nm);
+    b.onclick = () => applyThumb(tp.id);
+    grid.appendChild(b);
+  }
+}
+async function frameToPhoto() {
+  if (!S.file || S.image || video.readyState < 2) return false;
+  const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext('2d').drawImage(video, 0, 0);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.94));
+  if (!blob) return false;
+  const name = `${S.file.name.replace(/\.[^.]+$/, '')}-frame-${Math.round(video.currentTime)}s.jpg`;
+  S.wantThumb = true;
+  await importFiles([new File([blob], name, { type: 'image/jpeg' })]);
+  return !!S.image;
+}
+async function applyThumb(id) {
+  const tp = THUMBS.find(x => x.id === id); if (!tp) return;
+  if (!S.image && !(await frameToPhoto())) return toast('Upload a photo or load a video first.');
+  if (!S.o.frame) setFrame();
+  S.o.overlay = { ...tp.overlay };
+  S.o.texts = tp.texts.map(t => newLayer({ ...t, start: 0, end: 1 }));
+  commit();
+  renderThumbUI(); renderTextUI(); timeline.render();
+  selectText(S.o.texts[0].id);
+  toast(`“${tp.name}” applied. Click any text to change it.`);
+}
+$('thumbFromFrame').onclick = async () => { if (await frameToPhoto()) { showLTab('thumb'); toast('Frame saved as a photo. Pick a layout.'); } };
+$('photoFile2').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) { S.wantThumb = true; importFiles([f]); } };
+$('thumbSize').onchange = e => { setFrame(e.target.value); commit(); renderThumbUI(); };
+$('thumbFit').onchange = e => { if (!S.o.frame) setFrame(); S.o.frame.fit = e.target.value; commit(); };
+$('thumbOverlay').onchange = e => { S.o.overlay = e.target.value === 'none' ? null : { type: e.target.value, color: $('thumbOvColor').value }; commit(); };
+$('thumbOvColor').addEventListener('input', e => { if (S.o.overlay) S.o.overlay.color = e.target.value; });
+$('thumbOvColor').addEventListener('change', () => commit());
+$('thumbExport').onclick = () => exportPhoto();
+['cardThumb', 'navThumb'].forEach(id => $(id).addEventListener('click', () => { S.wantThumb = true; }));
 
 // ---------- media library: several files, each its own saved project ----------
 /** Import files: the first opens in the editor, the rest wait in the media library. */
@@ -2672,4 +2871,4 @@ if (location.hash === '#live') { openEditor(); setMode('live'); }
 requestAnimationFrame(loop);
 
 // Exposed for automated end-to-end tests only.
-window.__vcz = { S, tpl, setSegments, C };
+window.__vcz = { S, tpl, setSegments, C, video };

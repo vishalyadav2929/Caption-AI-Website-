@@ -977,3 +977,24 @@ body.warping .intro-copy { transition: transform .7s ease-in, opacity .7s ease-i
   .tl-dock .tl-bar > * { flex: none; }
   .tl-dock .tl-title { margin-right: 4px; }
 }
+.tgl-wide { width: auto; padding: 0 10px; font-size: 12.5px; font-weight: 700; }
+.clip-all { width: 100%; margin-top: 10px; }
+
+/* ----- Thumbnail maker ----- */
+.thumb-src { flex-wrap: wrap; }
+.thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.thumb-tile { display: grid; gap: 5px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 700; text-align: left; }
+.thumb-tile canvas { width: 100%; height: auto; border-radius: 10px; border: 2px solid var(--line); transition: transform .15s, border-color .15s; background: #000; }
+.thumb-tile:hover canvas { transform: translateY(-2px); border-color: var(--accent); }
+.thumb-tile:hover { color: var(--text); }
+.thumb-dl { width: 100%; }
+.dash-card.c6 { background: linear-gradient(135deg, #7c2d12, #16161e 75%); }
+
+/* Text: auto captions next to manual text; break a template apart; style target switch */
+.auto-cap { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; padding: 10px; border: 1px dashed var(--line, #333); border-radius: 10px; }
+.auto-cap small { opacity: .7; }
+.txt-break { margin-top: 6px; width: 100%; }
+.style-for-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+.style-for-row .seg-ctl { flex: 1; min-width: 180px; }
+.style-for-row .seg-ctl button { padding: 6px 8px; white-space: nowrap; }
+#txtAnim { flex: 1; min-width: 0; }

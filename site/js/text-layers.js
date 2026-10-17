@@ -39,13 +39,22 @@ const fontOf = (L, px) => fontString({ font: L.font, weight: L.bold ? 800 : 500,
 
 /** Where a layer sits on a W×H frame (box in frame pixels). */
 export function layout(ctx, W, H, L) {
-  const px = Math.max(6, L.size * Math.min(W, H));
+  let px = Math.max(6, L.size * Math.min(W, H));
   ctx.font = fontOf(L, px);
-  const lines = wrapLines(L.text, W * 0.92, s => ctx.measureText(s).width);
+  let lines;
+  if (L.oneLine) {
+    // One line: no wrapping; shrink the text if it's wider than the frame.
+    lines = [String(L.text).replace(/\s+/g, ' ').trim()];
+    const w0 = ctx.measureText(lines[0]).width;
+    if (w0 > W * 0.94) { px *= W * 0.94 / w0; ctx.font = fontOf(L, px); }
+  } else lines = wrapLines(L.text, W * 0.92, s => ctx.measureText(s).width);
   const widths = lines.map(s => ctx.measureText(s).width);
   const lineH = px * 1.2, w = Math.max(px * 0.5, ...widths), h = lines.length * lineH;
-  const cx = L.x * W, cy = L.y * H;
-  return { px, lines, widths, lineH, w, h, x0: cx - w / 2, y0: cy - h / 2, cx };
+  // Keep the whole block inside the frame (e.g. a layout made for 16:9 used on a tall cover).
+  const mx = W * 0.03, my = H * 0.02;
+  const x0 = Math.min(Math.max(L.x * W - w / 2, mx), Math.max(mx, W - mx - w));
+  const y0 = Math.min(Math.max(L.y * H - h / 2, my), Math.max(my, H - my - h));
+  return { px, lines, widths, lineH, w, h, x0, y0, cx: x0 + w / 2 };
 }
 
 const hexA = (hex, a) => {
