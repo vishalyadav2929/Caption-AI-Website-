@@ -1036,3 +1036,4 @@ body.design #ltabClips, body.design #tabCaptions, body.design #ltabSnd, body.des
 .ls-steps, .ls-tips { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
 .ls-tips li { color: #fbbf24; }
 .ls-studio { text-align: center; }
+.clip-batch { display: grid; gap: 6px; margin: 10px 0; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }

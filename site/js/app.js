@@ -208,8 +208,9 @@ function applyCaptionTpl(t) {
 /** Where a picked style goes: 'cap' (captions) or 'text'. The visitor can choose; otherwise it's guessed. */
 function styleTarget() {
   if (S.image) return 'text';
-  if (S.styleFor) return S.styleFor;
+  // A selected text always takes the style (choosing "Captions" in the switch deselects it).
   if (curText()) return 'text';
+  if (S.styleFor) return S.styleFor;
   return S.lastTool === 'text' || (!S.segments.length && texts().length > 0) ? 'text' : 'cap';
 }
 function renderStyleFor() {
@@ -373,7 +374,7 @@ function renderCapTpls() {
     b.setAttribute('role', 'option'); b.setAttribute('aria-selected', t.id === S.tplId);
     b.textContent = t.name; b.style.fontFamily = `'${t.font}'`; b.style.fontWeight = t.weight || 700;
     b.style.color = toHex(t.color) === '#ffffff' ? '' : t.color;
-    b.onclick = () => { S.styleFor = 'cap'; applyCaptionTpl(t); };
+    b.onclick = () => applyCaptionTpl(t);
     strip.appendChild(b);
   }
 }
@@ -650,6 +651,7 @@ function renderTextUI() {
 }
 function selectText(id, focus) {
   if (S.textSel !== id) S.txtWord = null;
+  S.styleFor = null; // working on a text: styles go on it again
   S.textSel = id;
   showRTab('text'); renderTextUI(); timeline.render();
   const L = curText(); gallery.select(L && L.tpl ? L.tpl : null);
@@ -2381,10 +2383,11 @@ function renderClipUI() {
 }
 $('clipFind').onclick = () => findAndShowClips();
 // Export every suggested short, one after another (each is its own download).
-$('clipAll').onclick = async () => {
+$('clipAll').onclick = () => exportAllShorts(true);
+async function exportAllShorts(ask) {
   const list = S.o.found || [];
-  if (!list.length || S.exporting) return;
-  if (!confirm(`Export all ${list.length} shorts one after another? Your browser may ask once to allow several downloads.`)) return;
+  if (!list.length || S.exporting) return 0;
+  if (ask && !confirm(`Export all ${list.length} shorts one after another? Your browser may ask once to allow several downloads.`)) return 0;
   const was = S.o.clip;
   let done = 0;
   // A series exports in part order, so the downloads are numbered like the parts.
@@ -2392,15 +2395,56 @@ $('clipAll').onclick = async () => {
   for (let i = 0; i < order.length; i++) {
     applyClip(order[i]);
     const z = aspectSize(S.o.clip.aspect);
-    $('exportTitle').textContent = `Exporting short ${i + 1} of ${list.length}…`;
+    $('exportTitle').textContent = `${S.batchVideo ? `${S.batchVideo} · ` : ''}Exporting short ${i + 1} of ${list.length}…`;
     await exportVideo({ kind: 'video', size: { w: z.w, h: z.h, label: '' }, batch: `${i + 1}/${list.length}` });
     if (S.batchCancelled) break;
     done++;
   }
+  const cancelled = S.batchCancelled;
   S.batchCancelled = false;
   status(done === list.length ? `Exported ${done} shorts.` : `Stopped after ${done} of ${list.length} shorts.`);
   if (!was) exitClip();
-};
+  return cancelled ? -1 : done;
+}
+// Every video in Media, one after another: captions (if missing) → best moments → export all its shorts.
+const until = (ok, ms = 500) => new Promise(res => { const t = setInterval(() => { if (ok()) { clearInterval(t); res(); } }, ms); });
+async function reelsFromAll() {
+  const vids = (await listProjects()).filter(p => p.kind !== 'photo' && p.hasFile).reverse();
+  if (!vids.length) return toast('Import your videos in Media first (you can pick many at once).');
+  if (S.exporting || genRunning) return toast('Wait for the current job to finish.');
+  if (!confirm(`Make reels from all ${vids.length} videos? Each one gets captions (if it has none), its best ${$('clipCount').value} moments, and an export of each. This runs on your device and can take a long time: keep this tab open and the laptop plugged in.`)) return;
+  const asSeries = $('allSeries').checked;
+  let total = 0, skipped = [];
+  S.batchAll = true;
+  try {
+    for (let k = 0; k < vids.length; k++) {
+      const p = vids[k];
+      S.batchVideo = `Video ${k + 1} of ${vids.length}`;
+      $('clipNote').textContent = `${S.batchVideo}: opening “${p.name}”…`;
+      if (p.id !== S.projectId) { await saveNow(); await openProject(p.id); }
+      if (!S.file || S.image) { skipped.push(p.name); continue; }
+      S.wantClips = false;
+      if (!S.segments.length) {
+        $('clipNote').textContent = `${S.batchVideo}: making captions for “${p.name}”…`;
+        startCaptions();
+        await until(() => !genRunning);
+        S.wantClips = false;
+      }
+      showLTab('clips');
+      if (!S.segments.length) { skipped.push(p.name); continue; }
+      await findAndShowClips();
+      if (!(S.o.found && S.o.found.length)) { skipped.push(p.name); continue; }
+      if (asSeries) S.o.series = { on: true, name: (S.o.series && S.o.series.name) || p.name.slice(0, 24), order: 'time' };
+      const n = await exportAllShorts(false);
+      if (n < 0) break;
+      total += n;
+      await saveNow();
+    }
+  } finally { S.batchAll = false; S.batchVideo = null; }
+  const msg = `Done: ${total} reels from ${vids.length - skipped.length} video${vids.length - skipped.length === 1 ? '' : 's'}.${skipped.length ? ` Skipped (no speech found): ${skipped.join(', ')}.` : ''}`;
+  $('clipNote').textContent = msg; status(msg);
+}
+$('clipAllVideos').onclick = () => reelsFromAll();
 $('clipExit').onclick = () => exitClip();
 const shortTag = range => (S.o.clip && S.o.clip.part ? `part-${S.o.clip.part}` : `short-${Math.round(range.start)}s`);
 const setSeries = p => {
