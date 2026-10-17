@@ -1251,6 +1251,8 @@ await step('design studio: separate home, template opens a sized design, sticker
   const errs = []; m.on('pageerror', e => errs.push(e.message));
   await m.goto(`${BASE}/design.html`);
   assert.equal(await m.locator('.ds-tpl').count(), 10);
+  await m.waitForFunction(() => document.querySelectorAll('#pro a').length === 2, null, { timeout: 10000 });
+  assert.match(await m.textContent('#pro'), /PhotoCraft.*MIT/);
   await m.click('#tabs button:has-text("Pinterest pin")');
   await m.locator('.ds-tpl', { hasText: 'Money' }).click();
   await m.waitForFunction(() => window.__vcz && window.__vcz.S.image && window.__vcz.S.o.texts.length === 2, null, { timeout: 15000 });
